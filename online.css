@@ -417,3 +417,72 @@ button:disabled { opacity: 0.55; cursor: not-allowed; filter: grayscale(0.4); }
 @media (max-width: 900px) {
   #chat { bottom: 74px; right: 8px; width: 210px; }
 }
+
+/* ============ trump card on the table (face-down, flips on reveal) ============ */
+.trump-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 2px; }
+.trump-caption { font-size: 0.66rem; color: #cfe6da; letter-spacing: 0.5px; }
+.flip-card { width: 54px; height: 78px; perspective: 700px; }
+.flip-inner { position: relative; width: 100%; height: 100%; transition: transform 0.7s cubic-bezier(.2,.8,.3,1.2); transform-style: preserve-3d; }
+.flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+.flip-back, .flip-front {
+  position: absolute; inset: 0; border-radius: 8px; backface-visibility: hidden;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.45);
+}
+.flip-back { background: repeating-linear-gradient(45deg,#1e3b57,#1e3b57 6px,#27506f 6px,#27506f 12px); border: 2px solid #0d2233; }
+.flip-front { background: var(--card-bg); transform: rotateY(180deg); font-size: 2.1rem; color: #1c1c1c; }
+.flip-front.red { color: var(--red); }
+.flip-card.reveal-flash { animation: trumpPulse 1.6s ease; }
+@keyframes trumpPulse {
+  0%   { filter: drop-shadow(0 0 0 rgba(243,195,74,0)); }
+  25%  { filter: drop-shadow(0 0 22px rgba(243,195,74,1)); }
+  100% { filter: drop-shadow(0 0 0 rgba(243,195,74,0)); }
+}
+
+/* full-screen trump announcement */
+.trump-announce {
+  position: fixed; inset: 0; margin: auto; width: max-content; height: max-content;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 26px 46px; border-radius: 20px; z-index: 300; pointer-events: none;
+  background: rgba(8,18,14,0.92); border: 2px solid var(--gold);
+  box-shadow: 0 0 60px rgba(243,195,74,0.55);
+  animation: taPop 1.9s ease forwards;
+}
+.trump-announce .ta-sym { font-size: 4.2rem; line-height: 1; }
+.trump-announce .ta-txt { font-size: 0.78rem; letter-spacing: 4px; color: var(--gold); }
+.trump-announce .ta-suit { font-size: 1.1rem; font-weight: 800; letter-spacing: 3px; color: #fff; }
+.trump-announce.red .ta-sym { color: var(--red); }
+.trump-announce.black .ta-sym { color: #fff; }
+body.cb .trump-announce.suit-diamonds .ta-sym { color: #1f7ae0; }
+body.cb .trump-announce.suit-clubs .ta-sym { color: #1f9d55; }
+@keyframes taPop {
+  0%   { opacity: 0; transform: scale(0.6); }
+  15%  { opacity: 1; transform: scale(1.06); }
+  30%  { transform: scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce), (max-width: 1px) {
+  .flip-inner { transition: none; } .trump-announce { animation: none; }
+}
+body.reduce-motion .flip-inner { transition: none; }
+body.reduce-motion .trump-announce { animation: none; opacity: 1; }
+
+/* ============ friends ============ */
+.dot.off { background: #6b7d74; }
+.fr-name { flex: 1; }
+.fr-status { font-size: 0.72rem; color: var(--dim); }
+.add-friend { display: flex; gap: 6px; margin-top: 10px; }
+.add-friend input {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: rgba(255,255,255,0.95); color: #111; font-size: 0.82rem;
+}
+#friend-msg { font-size: 0.75rem; color: var(--gold); }
+
+/* play-with-friends screen */
+.join-row { display: flex; gap: 8px; width: 100%; }
+.join-row input {
+  flex: 1; min-width: 0; text-align: center; letter-spacing: 6px; font-weight: 700;
+  padding: 11px; border-radius: 9px; border: 1px solid var(--line);
+  background: rgba(255,255,255,0.95); color: #111; font-size: 1.1rem;
+}

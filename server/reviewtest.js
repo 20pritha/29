@@ -18,7 +18,8 @@ server.listen(0, async () => {
   click(doc.getElementById('home-guest')); await tick(200);
 
   // BUG A: empty seats rendered as "null" and room falsely "Ready"
-  click(doc.querySelector('.feature-card.green')); await tick(250);   // Play with Friends
+  click(doc.querySelector('.feature-card.green')); await tick(150);   // Play with Friends screen
+  click(doc.getElementById('create-room-btn')); await tick(250);      // -> private room lobby
   if(!vis('lobby-screen')) errs.push('lobby did not open');
   const seatText = txt('seat-list');
   if(/null/.test(seatText)) errs.push('BUG A: empty seats still render "null" -> '+seatText.replace(/\s+/g,' ').slice(0,80));
@@ -54,7 +55,7 @@ server.listen(0, async () => {
   if(!over) errs.push('match did not finish');
   if(/Resolving|trick \d+\/8/.test(txt('player-label'))) errs.push('BUG C: stale turn label on game over -> '+txt('player-label'));
   else console.log('  game over label:', txt('player-label'), '|', txt('table-message'));
-  if(!/MADE it|was SET/.test(txt('game-log'))) errs.push('hand results not announced in log');
+  if(doc.getElementById('game-log')) errs.push('game log should have been removed');
 
   // nav/tiles cleanup
   const nav=[...doc.querySelectorAll('.nav-item')].map(a=>a.textContent).join('|');

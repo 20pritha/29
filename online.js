@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 
 function show(screen) {
   const overlays = ['home-screen', 'auth-screen'];
-  const views = ['entry-screen', 'lobby-screen', 'game-screen', 'learn-screen', 'settings-screen', 'ranked-screen'];
+  const views = ['entry-screen', 'lobby-screen', 'game-screen', 'learn-screen', 'settings-screen', 'ranked-screen', 'friends-screen'];
   overlays.forEach((s) => $(s).classList.toggle('hidden', s !== screen));
   const inApp = views.includes(screen);
   $('app').classList.toggle('hidden', !inApp);
@@ -24,6 +24,7 @@ function show(screen) {
   if (screen === 'entry-screen') sendRaw({ t: 'home' });
   if (screen === 'learn-screen') buildLearn();
   if (screen === 'ranked-screen') renderRanked();
+  if (screen === 'settings-screen') renderProfilePanel();
   if (screen === 'settings-screen') {
     const a = $('set-account');
     if (a) a.textContent = me.guest
@@ -231,13 +232,42 @@ function renderRanked() {
   });
 }
 
+const DAILY_MS = 12 * 3600 * 1000;
+/** Profile summary shown on the merged Profile & Settings screen. */
+function renderProfilePanel() {
+  const s = me.stats; if (!s) return;
+  const ti = tierInfo(s.rating || 0);
+  setAvatar('st-avatar', (me.name || '?')[0].toUpperCase(), ti.cur.color);
+  $('st-name').textContent = me.name + (me.guest ? ' · guest' : '');
+  $('st-tier').textContent = ti.cur.icon + ' ' + ti.cur.name + ' · ' + (s.rating || 0) + ' 🏆';
+  $('st-tier').style.color = ti.cur.color;
+  $('st-matches').textContent = s.games || 0;
+  $('st-wins').textContent = s.wins || 0;
+  $('st-winrate').textContent = (s.games ? Math.round(100 * s.wins / s.games) : 0) + '%';
+  $('st-highbid').textContent = s.highestBid || '—';
+  $('st-streak').textContent = s.bestStreak || 0;
+  $('st-trophies').textContent = s.rating || 0;
+}
+
 function renderDaily() {
   const btn = $('daily-btn'); const s = me.stats; if (!s) return;
-  const ready = !s.lastDaily || (Date.now() - s.lastDaily) >= 20 * 3600 * 1000;
+  const nextAt = (s.lastDaily || 0) + DAILY_MS;
+  const left = nextAt - Date.now();
+  const ready = left <= 0;
   btn.disabled = !ready;
   btn.textContent = ready ? 'Claim' : 'Claimed';
-  $('daily-sub').textContent = ready ? 'Claim your reward' : 'Come back tomorrow';
+  $('daily-sub').textContent = ready ? 'Claim your reward' : ('Next in ' + fmtCountdown(left));
 }
+/** h:mm:ss remaining. */
+function fmtCountdown(ms) {
+  if (ms < 0) ms = 0;
+  const h = Math.floor(ms / 3600000);
+  const mn = Math.floor((ms % 3600000) / 60000);
+  const sc = Math.floor((ms % 60000) / 1000);
+  return h + 'h ' + String(mn).padStart(2, '0') + 'm ' + String(sc).padStart(2, '0') + 's';
+}
+// tick the daily countdown live
+setInterval(() => { if (me.stats && !$('entry-screen').classList.contains('hidden')) renderDaily(); }, 1000);
 function seasonEnd() {
   const n = new Date(); const q = Math.floor(n.getMonth() / 3);
   return new Date(n.getFullYear(), q * 3 + 3, 0, 23, 59, 59);
@@ -269,19 +299,34 @@ function renderMatches(matches) {
     el.appendChild(row);
   });
 }
-function renderHome(m) {
+function renderFriends(friends) {
   const pl = $('players-list');
   pl.innerHTML = '';
-  const online = m.online || [];
-  if (!online.length) pl.innerHTML = '<div class="empty">Just you for now.</div>';
-  online.forEach((n) => {
+  if (!friends || !friends.length) {
+    pl.innerHTML = '<div class="empty">No friends yet — add someone by their username.</div>';
+    return;
+  }
+  friends.forEach((f) => {
     const d = document.createElement('div');
     d.className = 'player-online';
-    const dot = document.createElement('span'); dot.className = 'dot';
-    const nm = document.createElement('span'); nm.textContent = n + (n === me.name ? ' (you)' : '');
-    d.appendChild(dot); d.appendChild(nm);
+    const dot = document.createElement('span');
+    dot.className = 'dot' + (f.online ? '' : ' off');
+    const nm = document.createElement('span');
+    nm.className = 'fr-name';
+    nm.textContent = f.name;
+    const st = document.createElement('span');
+    st.className = 'fr-status';
+    st.textContent = f.online ? 'Online' : 'Offline';
+    const rm = document.createElement('button');
+    rm.className = 'kick'; rm.textContent = '✕'; rm.title = 'Remove friend';
+    rm.onclick = () => sendRaw({ t: 'removeFriend', name: f.name });
+    d.appendChild(dot); d.appendChild(nm); d.appendChild(st); d.appendChild(rm);
     pl.appendChild(d);
   });
+}
+
+function renderHome(m) {
+  renderFriends(m.friends);
   const lb = $('leaderboard-list');
   lb.innerHTML = '';
   const board = m.leaderboard || [];
@@ -313,6 +358,10 @@ function onMessage(m) {
     case 'home':
       renderHome(m);
       break;
+    case 'friends':
+      renderFriends(m.friends);
+      if (m.msg) { $('friend-msg').textContent = m.msg; toast(m.msg); }
+      break;
     case 'noRoom':
       localStorage.removeItem(CODE_KEY);
       show('entry-screen');
@@ -336,7 +385,7 @@ function onMessage(m) {
       else { $('auth-msg').textContent = m.msg; show('auth-screen'); }
       break;
     case 'joined':
-      _lastNarr = ''; { const gl = $('game-log'); if (gl) gl.innerHTML = ''; }
+      _trumpWasRevealed = false;
       me.code = m.code; me.seat = m.seat;
       localStorage.setItem(CODE_KEY, m.code);
       $('room-code').textContent = m.code;
@@ -368,8 +417,7 @@ $('auth-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lo
 $('menu-btn').onclick = () => $('sidebar').classList.toggle('open');
 document.querySelectorAll('[data-view]').forEach((el) => el.onclick = () => {
   const v = el.dataset.view;
-  if (v === 'profile-jump') { show('entry-screen'); $('profile-jump').scrollIntoView({ behavior: 'smooth' }); }
-  else show(v);
+  show(v);
   closeSidebar();
 });
 document.querySelectorAll('[data-act]').forEach((el) => el.onclick = (e) => {
@@ -394,15 +442,26 @@ document.querySelectorAll('[data-soon]').forEach((el) => el.onclick = (e) => {
 // ---------- dashboard actions ----------
 $('daily-btn').onclick = (e) => { e.stopPropagation(); Sound.init(); sendRaw({ t: 'claimDaily' }); };
 $('signout').onclick = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(CODE_KEY); location.reload(); };
-$('join-btn').onclick = () => {
+$('create-room-btn').onclick = () => { Sound.init(); sendRaw({ t: 'createRoom' }); };
+$('join-form').addEventListener('submit', (e) => {
+  e.preventDefault();
   const code = $('join-code').value.trim().toUpperCase();
-  if (code.length === 4) sendRaw({ t: 'joinRoom', code });
+  if (code.length === 4) { $('entry-msg').textContent = ''; sendRaw({ t: 'joinRoom', code }); }
   else $('entry-msg').textContent = 'Enter a 4-letter code';
-};
-$('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join-btn').click(); });
+});
+$('add-friend-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = $('friend-name').value.trim();
+  $('friend-msg').textContent = '';
+  if (name) sendRaw({ t: 'addFriend', name });
+  $('friend-name').value = '';
+});
 
 // ---------- lobby ----------
 function renderLobby(m) {
+  const isPublic = !!m.public;
+  $('lobby-code-box').classList.toggle('hidden', isPublic);
+  $('lobby-label').textContent = isPublic ? 'MATCHMAKING' : 'ROOM CODE';
   me.seat = (typeof m.you === 'number') ? m.you : me.seat;
   me.host = (m.hostSeat === me.seat);
   $('room-code').textContent = m.code;
@@ -459,8 +518,7 @@ function addChat(from, text, mine) {
 function sendChat(inp) { const t = inp.value.trim(); if (t) sendRaw({ t: 'chat', text: t }); inp.value = ''; }
 $('chat-form').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('chat-input')); });
 $('game-chat-form').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('game-chat-input')); });
-$('log-tab').onclick = () => { $('log-tab').classList.add('active'); $('chat-tab').classList.remove('active'); $('game-log').classList.remove('hidden'); $('game-chat').classList.add('hidden'); };
-$('chat-tab').onclick = () => { $('chat-tab').classList.add('active'); $('log-tab').classList.remove('active'); $('game-chat').classList.remove('hidden'); $('game-log').classList.add('hidden'); };
+
 
 // ---------- game ----------
 function cardEl(card, { playable = false, onClick = null } = {}) {
@@ -495,17 +553,10 @@ function renderGame(m) {
   if (ms && m.matchPoints) {
     ms.textContent = 'Match ' + m.matchPoints[myTeam] + ' – ' + m.matchPoints[1 - myTeam] + '  (first to 6)';
   }
-  const trumpEl = $('gv-trump');
-  if (m.trumpRevealed) { trumpEl.textContent = SUIT_SYMBOL[m.trumpSuit]; }
-  else if (m.trumpSuit) { trumpEl.textContent = SUIT_SYMBOL[m.trumpSuit] + ' (you)'; }
-  else { trumpEl.textContent = 'Hidden'; }
-  trumpEl.style.color = m.trumpSuit
-    ? ((m.trumpSuit === 'hearts' || m.trumpSuit === 'diamonds') ? '#e0564c' : '#e8f0ea')
-    : '#9fb2a8';
+  renderTrumpCard(m);
   const bidTeam = m.highBidder != null ? m.highBidder % 2 : null;
   $('gv-bid-you').textContent = (bidTeam === myTeam) ? m.highBid : '—';
   $('gv-bid-opp').textContent = (bidTeam === (1 - myTeam)) ? m.highBid : '—';
-  pushLog(m);
 
   renderTrick(m);
 
@@ -559,6 +610,46 @@ function renderGame(m) {
   $('table-message').textContent = m.phase === 'play' && m.ledSuit
     ? 'Led: ' + SUIT_SYMBOL[m.ledSuit] + (m.mustPlayTrump ? ' · must play trump' : '')
     : (m.phase === 'bidding' ? 'Bidding 16–28' : m.phase === 'chooseTrump' ? 'Bidder choosing trump' : '');
+}
+
+/**
+ * The trump card sits face-down beside the table, exactly like the real game.
+ * It flips over — with a flash — the moment trump is revealed.
+ */
+let _trumpWasRevealed = false;
+function renderTrumpCard(m) {
+  const card = $('trump-card'), face = $('trump-face'), cap = $('trump-caption');
+  if (!card) return;
+  const known = m.trumpSuit; // set for the bidder, or once revealed
+  if (known) {
+    face.textContent = SUIT_SYMBOL[known];
+    face.className = 'flip-front ' + SUIT_COLOR[known] + ' suit-' + known;
+  }
+  card.classList.toggle('flipped', !!m.trumpRevealed);
+  cap.textContent = m.trumpRevealed ? 'Trump revealed'
+    : (known ? 'Your trump (hidden)' : 'Trump (face down)');
+
+  // flash + announce on the transition from hidden -> revealed
+  if (m.trumpRevealed && !_trumpWasRevealed) {
+    card.classList.add('reveal-flash');
+    setTimeout(() => card.classList.remove('reveal-flash'), 1600);
+    announceTrump(known);
+  }
+  if (!m.trumpRevealed) _trumpWasRevealed = false;
+  else _trumpWasRevealed = true;
+}
+
+/** Big centre-screen flash naming the trump suit. */
+function announceTrump(suit) {
+  if (!suit) return;
+  Sound.reveal();
+  const el = document.createElement('div');
+  el.className = 'trump-announce ' + SUIT_COLOR[suit] + ' suit-' + suit;
+  el.innerHTML = '<div class="ta-sym">' + SUIT_SYMBOL[suit] + '</div>'
+    + '<div class="ta-txt">TRUMP REVEALED</div>'
+    + '<div class="ta-suit">' + suit.toUpperCase() + '</div>';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1900);
 }
 
 function nameOf(m, seat) {

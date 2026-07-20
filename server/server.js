@@ -59,7 +59,7 @@ function defaultStats() {
   return {
     rating: 0, games: 0, wins: 0, losses: 0, // rating = trophies, everyone starts at Bronze 0
     xp: 0, coins: 0, gems: 0, streak: 0, bestStreak: 0, lastDaily: 0,
-    highestBid: 0, matches: [], // matches = recent game results (capped)
+    highestBid: 0, matches: [], friends: [], // matches/friends are capped lists
   };
 }
 function leaderboard() {
@@ -69,6 +69,24 @@ function leaderboard() {
     .slice(0, 10)
     .map((u, i) => ({ rank: i + 1, name: u.name, rating: u.stats.rating }));
 }
+/**
+ * A user's friends with live presence.
+ * @param {string} userId @returns {{name:string, online:boolean, trophies:number}[]}
+ */
+function friendList(userId) {
+  const u = users[userId];
+  if (!u) return [];
+  const onlineNames = new Set(onlinePlayers());
+  return (u.stats.friends || []).map((name) => {
+    const fid = nameIndex[name.toLowerCase()];
+    return {
+      name,
+      online: onlineNames.has(name),
+      trophies: fid && users[fid] ? users[fid].stats.rating : 0,
+    };
+  });
+}
+
 function onlinePlayers() {
   const names = [];
   for (const ws of wss.clients) if (ws.userId && users[ws.userId]) names.push(users[ws.userId].name);
@@ -344,6 +362,7 @@ function broadcastLobby(room) {
   const seats = seatInfo(room);
   const msg = {
     t: 'room', code: room.code, hostSeat: room.hostSeat, started: room.started, seats,
+    public: !!room.public,
     filled: seats.filter((s) => !s.empty).length, // server is the source of truth
   };
   for (const s of room.seats) if (s && !s.bot) send(s.ws, msg);
@@ -627,7 +646,7 @@ async function onMessage(ws, raw) {
       room.seats[seat] = { userId: ws.userId, name: ws.name, bot: false, ws };
       ws.room = room.code;
       cancelAbandonCleanup(room);
-      send(ws, { t: 'joined', code: room.code, seat, matched: true });
+      send(ws, { t: 'joined', code: room.code, seat, matched: true, public: true });
       broadcastLobby(room);
       return;
     }
@@ -637,7 +656,7 @@ async function onMessage(ws, raw) {
     room.public = true;
     room.seats[0].ws = ws;
     ws.room = room.code;
-    send(ws, { t: 'joined', code: room.code, seat: 0, matched: true });
+    send(ws, { t: 'joined', code: room.code, seat: 0, matched: true, public: true });
     return broadcastLobby(room);
   }
 
@@ -677,19 +696,42 @@ async function onMessage(ws, raw) {
       stats: users[ws.userId].stats,
       leaderboard: leaderboard(),
       online: onlinePlayers(),
+      friends: friendList(ws.userId),
     });
+  }
+
+  if (m.t === 'addFriend') {
+    const st = users[ws.userId].stats;
+    if (users[ws.userId].guest) return send(ws, { t: 'friends', friends: [], msg: 'Guests cannot add friends — create an account.' });
+    const target = String(m.name || '').trim();
+    const id = nameIndex[target.toLowerCase()];
+    if (!id) return send(ws, { t: 'friends', friends: friendList(ws.userId), msg: 'No player called "' + target + '"' });
+    if (id === ws.userId) return send(ws, { t: 'friends', friends: friendList(ws.userId), msg: "That's you!" });
+    const name = users[id].name;
+    if (st.friends.includes(name)) return send(ws, { t: 'friends', friends: friendList(ws.userId), msg: name + ' is already a friend' });
+    st.friends.push(name);
+    st.friends = st.friends.slice(0, 100);
+    persistUser(ws.userId);
+    return send(ws, { t: 'friends', friends: friendList(ws.userId), msg: 'Added ' + name });
+  }
+
+  if (m.t === 'removeFriend') {
+    const st = users[ws.userId].stats;
+    st.friends = (st.friends || []).filter((n) => n !== String(m.name || ''));
+    persistUser(ws.userId);
+    return send(ws, { t: 'friends', friends: friendList(ws.userId) });
   }
 
   if (m.t === 'claimDaily') {
     const st = users[ws.userId].stats;
     const now = Date.now();
-    const DAY = 20 * 60 * 60 * 1000; // 20h cooldown
+    const DAY = 12 * 60 * 60 * 1000; // 12h cooldown
     if (now - (st.lastDaily || 0) >= DAY) {
       st.lastDaily = now; st.coins += 100; st.xp += 50;
       persistUser(ws.userId);
-      return send(ws, { t: 'daily', granted: true, coins: 100, xp: 50, stats: st });
+      return send(ws, { t: 'daily', granted: true, coins: 100, xp: 50, nextAt: st.lastDaily + DAY, stats: st });
     }
-    return send(ws, { t: 'daily', granted: false, nextIn: DAY - (now - st.lastDaily), stats: st });
+    return send(ws, { t: 'daily', granted: false, nextAt: st.lastDaily + DAY, stats: st });
   }
 
   if (m.t === 'rejoin') {

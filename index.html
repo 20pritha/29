@@ -52,8 +52,7 @@
         <a class="nav-item" data-soon="Daily Puzzle">🧩 <span>Daily Puzzle</span></a>
         <a class="nav-item" data-view="learn-screen">📘 <span>Learn 29</span></a>
         <a class="nav-item" data-soon="Shop">🛒 <span>Shop</span></a>
-        <a class="nav-item" data-view="profile-jump">🙍 <span>Profile</span></a>
-        <a class="nav-item" data-view="settings-screen">⚙️ <span>Settings</span></a>
+        <a class="nav-item" data-view="settings-screen">🙍 <span>Profile &amp; Settings</span></a>
       </nav>
       <div class="side-profile">
         <div id="sb-avatar" class="avatar sm"></div>
@@ -104,10 +103,10 @@
               <div id="rc-rating" class="emblem-rating">🏆 0 trophies</div>
               <button class="gold-btn ghost">VIEW RANK</button>
             </div>
-            <div class="feature-card green" data-act="create">
+            <div class="feature-card green" data-view="friends-screen">
               <h3>PLAY WITH FRIENDS</h3><p>Create a room and invite your friends</p>
               <div class="friends-ico">👥</div>
-              <button class="gold-btn">CREATE ROOM</button>
+              <button class="gold-btn">PLAY WITH FRIENDS</button>
             </div>
           </div>
 
@@ -160,8 +159,13 @@
 
             <!-- Right rail: players + leaderboard -->
             <div class="panel-card rail">
-              <div class="card-head"><span>PLAYERS ONLINE</span></div>
+              <div class="card-head"><span>FRIENDS</span></div>
               <div id="players-list" class="players-list"></div>
+              <form id="add-friend-form" class="add-friend">
+                <input id="friend-name" placeholder="Add friend by name" maxlength="20" autocomplete="off" />
+                <button class="gold-btn" type="submit">Add</button>
+              </form>
+              <div id="friend-msg" class="msg"></div>
               <div class="card-head mt"><span>TOP PLAYERS</span></div>
               <div id="leaderboard-list" class="leaderboard"></div>
             </div>
@@ -176,12 +180,6 @@
             </div>
           </div>
 
-          <!-- quick join -->
-          <div class="quick-join">
-            <input id="join-code" placeholder="Enter room code" maxlength="4" style="text-transform:uppercase" />
-            <button id="join-btn" class="gold-btn">Join room</button>
-            <span id="entry-msg" class="msg"></span>
-          </div>
         </section>
 
         <!-- ===== Learn 29 ===== -->
@@ -267,7 +265,24 @@
         <!-- ===== Settings ===== -->
         <section id="settings-screen" class="view hidden">
           <div class="learn">
-            <h2 class="learn-title">Settings</h2>
+            <h2 class="learn-title">Profile &amp; Settings</h2>
+            <div class="panel-card learn-sec">
+              <div class="pf-top">
+                <div id="st-avatar" class="avatar"></div>
+                <div>
+                  <div id="st-name" class="pf-name"></div>
+                  <div id="st-tier" class="pf-tier"></div>
+                </div>
+              </div>
+              <div class="pf-grid">
+                <div><b id="st-matches">0</b><span>Matches</span></div>
+                <div><b id="st-wins">0</b><span>Wins</span></div>
+                <div><b id="st-winrate">0%</b><span>Win rate</span></div>
+                <div><b id="st-highbid">—</b><span>Highest bid</span></div>
+                <div><b id="st-streak">0</b><span>Best streak</span></div>
+                <div><b id="st-trophies">0</b><span>Trophies</span></div>
+              </div>
+            </div>
             <div class="panel-card learn-sec">
               <h3>Game</h3>
               <label class="setting"><input type="checkbox" id="set-sound" /> <span>Sound effects</span></label>
@@ -310,12 +325,30 @@
           </div>
         </section>
 
+        <!-- ===== Play with friends ===== -->
+        <section id="friends-screen" class="view hidden">
+          <div class="centred">
+            <div class="lobby-card">
+              <div class="friends-ico">👥</div>
+              <h2 class="learn-title">Play with friends</h2>
+              <p class="hint">Start a private table and share the code, or enter a friend's code to join theirs.</p>
+              <button id="create-room-btn" class="glow-btn">Create a room</button>
+              <div class="or">or</div>
+              <form id="join-form" class="join-row">
+                <input id="join-code" placeholder="CODE" maxlength="4" autocomplete="off" style="text-transform:uppercase" />
+                <button class="gold-btn" type="submit">Join room</button>
+              </form>
+              <div id="entry-msg" class="msg"></div>
+            </div>
+          </div>
+        </section>
+
         <!-- ===== Lobby ===== -->
         <section id="lobby-screen" class="view hidden">
           <div class="centred">
             <div class="lobby-card">
-              <p class="lobby-label">ROOM CODE</p>
-              <div class="lobby-code">
+              <p class="lobby-label" id="lobby-label">ROOM CODE</p>
+              <div class="lobby-code" id="lobby-code-box">
                 <span id="room-code">----</span>
                 <button id="copy-code" class="ghost-btn small" title="Copy code">Copy</button>
               </div>
@@ -345,10 +378,6 @@
                 <div id="match-score" class="match-score"></div>
               </div>
               <div class="gpanel">
-                <div class="gpanel-title">TRUMP</div>
-                <div id="gv-trump" class="gv-trump">—</div>
-              </div>
-              <div class="gpanel">
                 <div class="gpanel-title">BID</div>
                 <div class="bid-line">You &amp; Partner <b id="gv-bid-you">—</b></div>
                 <div class="bid-line">Opponents <b id="gv-bid-opp">—</b></div>
@@ -356,6 +385,15 @@
             </div>
 
             <div class="felt">
+              <div class="trump-slot">
+                <div id="trump-card" class="flip-card">
+                  <div class="flip-inner">
+                    <div class="flip-back"></div>
+                    <div id="trump-face" class="flip-front"></div>
+                  </div>
+                </div>
+                <div id="trump-caption" class="trump-caption">Trump</div>
+              </div>
               <div id="trick-area"></div>
               <div id="table-message"></div>
               <div id="player-label"></div>
@@ -364,12 +402,8 @@
             </div>
 
             <div class="log-panel">
-              <div class="log-tabs">
-                <button id="log-tab" class="log-tab active">GAME LOG</button>
-                <button id="chat-tab" class="log-tab">CHAT</button>
-              </div>
-              <div id="game-log" class="log-body"></div>
-              <div id="game-chat" class="log-body hidden">
+              <div class="log-tabs"><button id="chat-tab" class="log-tab active">CHAT</button></div>
+              <div id="game-chat" class="log-body">
                 <div id="game-chat-log" class="chat-scroll"></div>
                 <form id="game-chat-form"><input id="game-chat-input" placeholder="Message…" maxlength="200" autocomplete="off" /></form>
               </div>
@@ -385,7 +419,7 @@
       <a class="bn-item" data-act="ranked">🏆<span>Ranked</span></a>
       <a class="bn-item" data-act="quick">🎴<span>Play</span></a>
       <a class="bn-item" data-view="learn-screen">📘<span>Learn</span></a>
-      <a class="bn-item" data-view="settings-screen">⚙️<span>Settings</span></a>
+      <a class="bn-item" data-view="settings-screen">🙍<span>Profile</span></a>
     </nav>
   </div>
 
