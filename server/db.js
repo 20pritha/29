@@ -8,9 +8,34 @@
  */
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
+const fs = require('fs');
 
-const DB_FILE = process.env.USERS_DB || path.join(__dirname, 'users.db');
-const db = new DatabaseSync(DB_FILE);
+const CONFIGURED = process.env.USERS_DB || path.join(__dirname, 'users.db');
+
+/**
+ * Open the database, creating the parent directory first — SQLite errors with
+ * "unable to open database file" if the folder is missing (e.g. `/data` when no
+ * volume is mounted).
+ * @param {string} file @returns {DatabaseSync}
+ */
+function openDb(file) {
+  const dir = path.dirname(file);
+  if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
+  return new DatabaseSync(file);
+}
+
+let db, DB_FILE = CONFIGURED;
+try {
+  db = openDb(CONFIGURED);
+} catch (e) {
+  // Read-only or unavailable location: keep the app running on a local file
+  // rather than crash-looping. Accounts then reset on redeploy.
+  DB_FILE = path.join(__dirname, 'users.db');
+  console.error('WARN: cannot use ' + CONFIGURED + ' (' + e.message + ').'
+    + ' Falling back to ' + DB_FILE + ' — accounts will NOT survive a redeploy.'
+    + ' Mount a persistent disk and point USERS_DB at it to keep them.');
+  db = openDb(DB_FILE);
+}
 db.exec('PRAGMA journal_mode = WAL');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (

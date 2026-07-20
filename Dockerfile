@@ -15,8 +15,11 @@ COPY . .
 
 # Hosts inject PORT; the server falls back to 8030 locally.
 ENV PORT=8030
-# Keep the account database on a mounted volume so redeploys don't wipe users.
+# Account database location. If a persistent disk is mounted at /data it is kept
+# across deploys; if no disk is attached the app still starts (the directory is
+# created in the container) but accounts reset on redeploy.
 ENV USERS_DB=/data/users.db
+RUN mkdir -p /data
 EXPOSE 8030
 
 CMD ["node", "server/server.js"]
