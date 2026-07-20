@@ -4,13 +4,19 @@
   "private": true,
   "type": "commonjs",
   "main": "server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node feattest.js && node online-uitest.js && node leaktest.js && node bugtest.js && node learntest.js && node archivetest.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "express": "^4.19.2",
-    "jsdom": "^29.1.1",
     "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
   }
 }

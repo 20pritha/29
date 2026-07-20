@@ -40,9 +40,31 @@ function toast(msg) {
 function closeSidebar() { $('sidebar').classList.remove('open'); }
 
 // ---------- connection ----------
+/**
+ * Where the game server lives. Defaults to the page's own origin (correct when
+ * the Node server serves the site). Override when the front end is hosted
+ * somewhere that can't run a WebSocket server (e.g. Vercel):
+ *   - set `window.TWENTYNINE_SERVER = 'my-app.onrender.com'` in config.js, or
+ *   - append ?server=my-app.onrender.com once (it is remembered).
+ * @returns {string} ws:// or wss:// URL
+ */
+function backendUrl() {
+  const qs = new URLSearchParams(location.search).get('server');
+  if (qs) { try { localStorage.setItem('twentynine-server', qs); } catch (e) {} }
+  let cfg = qs || (typeof window !== 'undefined' && window.TWENTYNINE_SERVER) || '';
+  if (!cfg) { try { cfg = localStorage.getItem('twentynine-server') || ''; } catch (e) {} }
+  if (cfg) {
+    cfg = cfg.trim().replace(/\/+$/, '');
+    if (/^wss?:\/\//.test(cfg)) return cfg;
+    if (/^https:\/\//.test(cfg)) return cfg.replace(/^https:/, 'wss:');
+    if (/^http:\/\//.test(cfg)) return cfg.replace(/^http:/, 'ws:');
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + cfg;
+  }
+  return (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+}
+
 function connect() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + location.host);
+  ws = new WebSocket(backendUrl());
   ws.onopen = () => {
     const tok = localStorage.getItem(TOKEN_KEY);
     if (tok) { authMode = 'token'; sendRaw({ t: 'auth', token: tok }); }

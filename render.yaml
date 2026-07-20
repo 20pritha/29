@@ -1,0 +1,17 @@
+# Render blueprint — deploys the whole game (client + WebSocket server) as one service.
+# Render supports persistent WebSocket connections, which Vercel does not.
+services:
+  - type: web
+    name: twentynine
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: USERS_DB
+        value: /data/users.db
+    # A disk keeps accounts/ratings across deploys. Requires a paid instance —
+    # on the free tier, remove this block and expect users.db to reset on redeploy.
+    disk:
+      name: twentynine-data
+      mountPath: /data
+      sizeGB: 1

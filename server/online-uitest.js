@@ -11,7 +11,7 @@ server.listen(0, async () => {
   const dom = new JSDOM(html, { runScripts:'dangerously', pretendToBeVisual:true, url:'http://localhost:'+port+'/' });
   const w = dom.window; w.WebSocket = WS;
   w.addEventListener('error', e => errs.push('win.error: '+((e.error&&e.error.stack)||e.message)));
-  for (const f of ['cards.js','sound.js','online.js']) { const s=w.document.createElement('script'); s.textContent=fs.readFileSync(path.join(ROOT,f),'utf8'); w.document.body.appendChild(s); }
+  for (const f of ['config.js','cards.js','sound.js','online.js']) { const s=w.document.createElement('script'); s.textContent=fs.readFileSync(path.join(ROOT,f),'utf8'); w.document.body.appendChild(s); }
   const doc=w.document; const vis=id=>!doc.getElementById(id).classList.contains('hidden');
   const txt=id=>doc.getElementById(id).textContent;
   const click=el=>el&&el.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
