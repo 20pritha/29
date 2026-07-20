@@ -131,7 +131,7 @@ input { font-family: inherit; }
 .bar-fill.xp { background: linear-gradient(90deg,#5ad1e6,#6dd36d); }
 
 /* ============ dashboard ============ */
-.feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+.feature-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 14px; }
 .feature-card { border-radius: 16px; padding: 18px; text-align: center; cursor: pointer;
   border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 8px;
   min-height: 220px; justify-content: space-between; transition: transform .12s; }
@@ -148,7 +148,7 @@ input { font-family: inherit; }
 .emblem-rating { color: var(--gold); font-size: 0.9rem; }
 .friends-ico { font-size: 3rem; }
 
-.tile-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.tile-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
   text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
 .tile-ico { font-size: 1.7rem; }
@@ -158,8 +158,9 @@ input { font-family: inherit; }
 .tile-btn:disabled { background: #4a5a52; color: #9fb2a8; }
 .season-tile .tile-ico { color: var(--gold); }
 
-.dash-lower { display: grid; grid-template-columns: 1.1fr 1.1fr 1fr 1fr; gap: 14px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.dash-lower { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+/* dashboard panel (distinct from the playing-card `.card` defined later) */
+.panel-card { background: var(--panel); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 14px; min-width: 0; }
 .card-head { font-size: 0.78rem; letter-spacing: 1px; color: var(--dim); margin-bottom: 10px; font-weight: 700; }
 .card-head.mt { margin-top: 14px; }
 .pf-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -188,7 +189,7 @@ input { font-family: inherit; }
 .lb-row .lb-rating { color: var(--dim); }
 
 .season-pass .sp-title { font-weight: 700; margin-bottom: 8px; }
-.sp-tiers { font-size: 1.4rem; letter-spacing: 6px; margin: 10px 0; }
+.sp-tiers { font-size: 1.1rem; letter-spacing: 4px; margin: 10px 0; }
 
 .quick-join { display: flex; gap: 8px; align-items: center; margin-top: 14px; max-width: 460px; }
 .quick-join input { flex: 1; }
