@@ -43,7 +43,11 @@ The client uses `wss://` automatically when loaded over `https://`, so tunnels w
 
 ## Notes / limits (MVP)
 
-- Users + Elo persist in `server/users.json`. Tokens are in memory (restart = re-login).
+- Accounts + Elo persist in a **SQLite** database at `server/users.db` (via Node's
+  built-in `node:sqlite` — no external service, no native build). Survives restarts.
+  On deploy, mount `users.db` on a persistent volume so redeploys don't wipe it.
+  A legacy `server/users.json` is auto-imported once on first boot if present.
+  Tokens are in memory (restart = re-login with password; the account persists).
 - Passwords are bcrypt-hashed. This is a hobby server: run it behind a tunnel's HTTPS, don't expose port 8030 raw to the internet.
 - Pacing is tunable: `BOT_MS`, `RESOLVE_MS`, `NEXT_MS` (ms) env vars.
 - If a player drops, a stand-in bot plays their seat until they reconnect (same account + room code).

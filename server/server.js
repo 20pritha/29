@@ -311,8 +311,8 @@ function updateRatings(room) {
       delta: s._delta, partner, at: Date.now(),
     });
     st.matches = st.matches.slice(0, 12);
+    persistUser(s.userId);
   }
-  saveUsers();
   for (let i = 0; i < 4; i++) {
     const s = room.seats[i];
     if (s && !s.bot && s.ws) {
@@ -518,7 +518,7 @@ async function onMessage(ws, raw) {
     const DAY = 20 * 60 * 60 * 1000; // 20h cooldown
     if (now - (st.lastDaily || 0) >= DAY) {
       st.lastDaily = now; st.coins += 100; st.xp += 50;
-      saveUsers();
+      persistUser(ws.userId);
       return send(ws, { t: 'daily', granted: true, coins: 100, xp: 50, stats: st });
     }
     return send(ws, { t: 'daily', granted: false, nextIn: DAY - (now - st.lastDaily), stats: st });

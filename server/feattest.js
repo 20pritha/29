@@ -1,3 +1,4 @@
+process.env.USERS_DB=':memory:';
 // Integration test for ranked (Elo) + chat + rematch + reconnect.
 process.env.BOT_MS='2'; process.env.RESOLVE_MS='2'; process.env.NEXT_MS='2';
 const { server } = require('./server.js');
