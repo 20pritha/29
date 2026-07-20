@@ -23,6 +23,7 @@ const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
+const store = require('./db'); // SQLite-backed user store
 
 const ROOT = path.join(__dirname, '..');
 const PORT = process.env.PORT || 8030;
@@ -66,24 +67,36 @@ function onlinePlayers() {
   for (const ws of wss.clients) if (ws.userId && users[ws.userId]) names.push(users[ws.userId].name);
   return [...new Set(names)].slice(0, 12);
 }
-function loadUsers() {
+// One-time import: if the DB is empty but a legacy users.json exists, migrate it.
+function migrateFromJson() {
+  if (store.count() > 0) return;
   try {
     const data = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    users = data.users || {};
-    nameIndex = {};
-    for (const id in users) {
-      // backfill any missing fields on older accounts
-      users[id].stats = Object.assign(defaultStats(), users[id].stats || {});
-      nameIndex[users[id].name.toLowerCase()] = id;
+    const legacy = data.users || {};
+    let n = 0;
+    for (const id in legacy) {
+      if (legacy[id].guest) continue;
+      legacy[id].stats = Object.assign(defaultStats(), legacy[id].stats || {});
+      store.upsertUser(legacy[id]);
+      n++;
     }
-  } catch (e) { users = {}; nameIndex = {}; }
+    if (n) console.log('migrated ' + n + ' account(s) from users.json → SQLite');
+  } catch (e) { /* no legacy file: nothing to migrate */ }
 }
-function saveUsers() {
-  try {
-    const persist = {};
-    for (const id in users) if (!users[id].guest) persist[id] = users[id];
-    fs.writeFileSync(USERS_FILE, JSON.stringify({ users: persist }, null, 2));
-  } catch (e) { console.error('saveUsers', e.message); }
+
+function loadUsers() {
+  migrateFromJson();
+  const loaded = store.loadAllUsers();
+  users = loaded.users;
+  nameIndex = loaded.nameIndex;
+  // backfill any missing fields on older accounts
+  for (const id in users) users[id].stats = Object.assign(defaultStats(), users[id].stats || {});
+}
+
+/** Persist a single account (guests are ephemeral and never written). */
+function persistUser(id) {
+  const u = users[id];
+  if (u && !u.guest) store.upsertUser(u);
 }
 loadUsers();
 
@@ -435,7 +448,7 @@ async function onMessage(ws, raw) {
     const id = crypto.randomUUID();
     users[id] = { id, name, passHash, stats: defaultStats() };
     nameIndex[name.toLowerCase()] = id;
-    saveUsers();
+    persistUser(id);
     authUser(ws, id);
     return sendAuthOk(ws, id, issueToken(id));
   }
