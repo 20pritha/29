@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 
 function show(screen) {
   const overlays = ['home-screen', 'auth-screen'];
-  const views = ['entry-screen', 'lobby-screen', 'game-screen', 'learn-screen', 'settings-screen'];
+  const views = ['entry-screen', 'lobby-screen', 'game-screen', 'learn-screen', 'settings-screen', 'ranked-screen'];
   overlays.forEach((s) => $(s).classList.toggle('hidden', s !== screen));
   const inApp = views.includes(screen);
   $('app').classList.toggle('hidden', !inApp);
@@ -23,6 +23,7 @@ function show(screen) {
     el.classList.toggle('active', el.dataset.view === screen));
   if (screen === 'entry-screen') sendRaw({ t: 'home' });
   if (screen === 'learn-screen') buildLearn();
+  if (screen === 'ranked-screen') renderRanked();
   if (screen === 'settings-screen') {
     const a = $('set-account');
     if (a) a.textContent = me.guest
@@ -63,16 +64,56 @@ function backendUrl() {
   return (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
 }
 
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+/** Show connection state and stop people clicking into a dead socket. */
+function setConnStatus(state) {
+  const el = $('conn-status');
+  if (el) {
+    el.textContent = state === 'connecting' ? 'Connecting…'
+      : state === 'reconnecting' ? 'Reconnecting…' : '';
+    el.classList.toggle('hidden', state === 'open');
+  }
+  ['home-guest', 'login-btn', 'register-btn'].forEach((id) => {
+    const b = $(id);
+    if (b) b.disabled = (state !== 'open');
+  });
+}
+
 function connect() {
+  setConnStatus(reconnectAttempts ? 'reconnecting' : 'connecting');
   ws = new WebSocket(backendUrl());
+
   ws.onopen = () => {
-    const tok = localStorage.getItem(TOKEN_KEY);
+    reconnectAttempts = 0;
+    setConnStatus('open');
+    // Resume the session if we have a token (localStorage for accounts, memory
+    // for guests), otherwise show the splash.
+    const tok = localStorage.getItem(TOKEN_KEY) || me.token;
     if (tok) { authMode = 'token'; sendRaw({ t: 'auth', token: tok }); }
-    else show('home-screen');
+    else if ($('app').classList.contains('hidden')) show('home-screen');
+    // Flush anything the user clicked while the socket was still connecting —
+    // without this those actions were silently lost.
+    const queued = pending;
+    pending = [];
+    queued.forEach((o) => sendRaw(o));
   };
+
   ws.onmessage = (e) => onMessage(JSON.parse(e.data));
-  ws.onclose = () => toast('Disconnected. Reload to reconnect.');
-  ws.onerror = () => toast('Cannot reach server. Start it and open http://localhost:8030');
+
+  ws.onclose = () => {
+    setConnStatus('reconnecting');
+    scheduleReconnect();
+  };
+  ws.onerror = () => { /* close fires next; reconnect is handled there */ };
+}
+
+/** Reconnect automatically with backoff (free hosts sleep and drop sockets). */
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = Math.min(1000 * Math.pow(1.7, reconnectAttempts++), 15000);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
 }
 // Queue while connecting so a click during handshake is not lost.
 let pending = [];
@@ -86,12 +127,13 @@ function sendRaw(o) {
 function action(a) { Sound.init(); sendRaw(Object.assign({ t: 'action' }, a)); }
 
 // ---------- rank tiers / progression ----------
+// Trophy ladder. Everyone starts at Bronze with 0 trophies and only climbs.
 const TIERS = [
-  { name: 'Bronze', min: 0, color: '#cd7f32' },
-  { name: 'Silver', min: 1000, color: '#c8ccd0' },
-  { name: 'Gold', min: 1150, color: '#f3c34a' },
-  { name: 'Diamond', min: 1300, color: '#5ad1e6' },
-  { name: 'Legend', min: 1500, color: '#b06bff' },
+  { name: 'Bronze', min: 0, color: '#cd7f32', icon: '🥉' },
+  { name: 'Silver', min: 300, color: '#c8ccd0', icon: '🥈' },
+  { name: 'Gold', min: 800, color: '#f3c34a', icon: '🥇' },
+  { name: 'Diamond', min: 1500, color: '#5ad1e6', icon: '💎' },
+  { name: 'Legend', min: 2500, color: '#b06bff', icon: '👑' },
 ];
 function tierInfo(rating) {
   let idx = 0;
@@ -123,25 +165,25 @@ function renderDashboard() {
   // sidebar mini-profile
   setAvatar('sb-avatar', initial, ti.cur.color);
   $('sb-name').textContent = me.name;
-  $('sb-rank').textContent = ti.cur.name + ' · ' + s.rating;
+  $('sb-rank').textContent = ti.cur.name + ' · ' + (s.rating || 0) + ' 🏆';
   $('sb-xp-bar').style.width = xpPct(s) + '%';
 
   // ranked feature card
   $('rc-emblem').style.color = ti.cur.color;
   $('rc-tier').textContent = ti.cur.name;
-  $('rc-rating').textContent = '🏆 ' + s.rating;
+  $('rc-rating').textContent = '🏆 ' + (s.rating || 0) + ' trophies';
 
   // profile card
   setAvatar('pf-avatar', initial, ti.cur.color);
   $('pf-name').textContent = me.name;
-  $('pf-tier').textContent = ti.cur.name + ' · ' + s.rating;
+  $('pf-tier').textContent = ti.cur.name + ' · ' + (s.rating || 0) + ' 🏆';
   $('pf-tier').style.color = ti.cur.color;
   $('pf-matches').textContent = s.games || 0;
   $('pf-wins').textContent = s.wins || 0;
   $('pf-winrate').textContent = (s.games ? Math.round(100 * s.wins / s.games) : 0) + '%';
   $('pf-highbid').textContent = s.highestBid || '—';
   $('pf-streak').textContent = s.bestStreak || 0;
-  $('pf-rating').textContent = s.rating;
+  $('pf-rating').textContent = (s.rating || 0);
 
   // season pass progress (placeholder: XP within a 1000 goal)
   $('sp-bar').style.width = Math.min(100, ((s.xp || 0) % 1000) / 10) + '%';
@@ -150,6 +192,45 @@ function renderDashboard() {
   renderSeason();
   renderMatches(s.matches || []);
 }
+/** Ranked screen: current tier, trophies, and exactly how many to the next rank. */
+function renderRanked() {
+  const s = me.stats;
+  if (!s) return;
+  const trophies = s.rating || 0;
+  const ti = tierInfo(trophies);
+  $('rk-icon').textContent = ti.cur.icon;
+  $('rk-tier').textContent = ti.cur.name;
+  $('rk-tier').style.color = ti.cur.color;
+  $('rk-trophies').textContent = trophies;
+  $('rk-bar').style.width = (ti.pct * 100) + '%';
+  $('rk-bar').style.background = ti.cur.color;
+  $('rk-next').textContent = ti.next
+    ? (ti.next.min - trophies) + ' more trophies to reach ' + ti.next.name
+      + '  (' + trophies + ' / ' + ti.next.min + ')'
+    : 'Top rank reached — you are a Legend.';
+
+  const ladder = $('rk-ladder');
+  ladder.innerHTML = '';
+  TIERS.forEach((t, i) => {
+    const next = TIERS[i + 1];
+    const row = document.createElement('div');
+    const isCurrent = t.name === ti.cur.name;
+    row.className = 'rank-row' + (isCurrent ? ' current' : (trophies < t.min ? ' locked' : ''));
+    const ico = document.createElement('span'); ico.className = 'rk-ico'; ico.textContent = t.icon;
+    const nm = document.createElement('span'); nm.className = 'rk-name';
+    nm.textContent = t.name; nm.style.color = t.color;
+    const req = document.createElement('span'); req.className = 'rk-req';
+    req.textContent = next ? (t.min + '–' + (next.min - 1) + ' 🏆') : (t.min + '+ 🏆');
+    row.appendChild(ico); row.appendChild(nm); row.appendChild(req);
+    if (isCurrent) {
+      const you = document.createElement('span');
+      you.className = 'badge'; you.textContent = 'you';
+      row.appendChild(you);
+    }
+    ladder.appendChild(row);
+  });
+}
+
 function renderDaily() {
   const btn = $('daily-btn'); const s = me.stats; if (!s) return;
   const ready = !s.lastDaily || (Date.now() - s.lastDaily) >= 20 * 3600 * 1000;
@@ -221,6 +302,7 @@ function onMessage(m) {
   switch (m.t) {
     case 'authOk':
       me.name = m.user; me.stats = m.stats; me.guest = !!m.guest;
+      me.token = m.token; // kept in memory so guests survive a reconnect too
       if (m.guest) localStorage.removeItem(TOKEN_KEY); else localStorage.setItem(TOKEN_KEY, m.token);
       $('whoami').textContent = m.user;
       renderDashboard();
@@ -241,7 +323,7 @@ function onMessage(m) {
     case 'stats':
       me.stats = m.stats;
       renderDashboard();
-      toast('+' + m.xpGain + ' XP · +' + m.coinGain + ' 🪙 · Rating ' + (m.delta >= 0 ? '+' : '') + m.delta);
+      toast('+' + m.xpGain + ' XP · +' + m.coinGain + ' 🪙 · +' + m.delta + ' 🏆');
       break;
     case 'daily':
       me.stats = m.stats;
@@ -254,6 +336,7 @@ function onMessage(m) {
       else { $('auth-msg').textContent = m.msg; show('auth-screen'); }
       break;
     case 'joined':
+      _lastNarr = ''; { const gl = $('game-log'); if (gl) gl.innerHTML = ''; }
       me.code = m.code; me.seat = m.seat;
       localStorage.setItem(CODE_KEY, m.code);
       $('room-code').textContent = m.code;
@@ -264,7 +347,7 @@ function onMessage(m) {
       break;
     case 'state':
       last = m; me.seat = m.you; me.host = (m.hostSeat === m.you);
-      if ($('game-screen').classList.contains('hidden')) show('game-screen');
+      show('game-screen');
       renderGame(m);
       break;
     case 'error':
@@ -292,8 +375,16 @@ document.querySelectorAll('[data-view]').forEach((el) => el.onclick = () => {
 document.querySelectorAll('[data-act]').forEach((el) => el.onclick = (e) => {
   e.stopPropagation();
   const a = el.dataset.act;
-  if (a === 'create') { Sound.init(); sendRaw({ t: 'createRoom' }); }
-  else if (a === 'ranked') { show('entry-screen'); toast('Ranked uses your rating — climb to Legend!'); }
+  if (a === 'create' || a === 'quick') {
+    // Already in a room? Go back to it instead of silently abandoning it.
+    if (me.code && (last || $('lobby-screen'))) {
+      if (last && last.started && last.gameWinner == null) { show('game-screen'); closeSidebar(); return; }
+      if (!last && me.code) { show('lobby-screen'); closeSidebar(); return; }
+    }
+    Sound.init();
+    sendRaw({ t: a === 'quick' ? 'quickMatch' : 'createRoom' });
+  }
+  else if (a === 'ranked') show('ranked-screen');
   closeSidebar();
 });
 document.querySelectorAll('[data-soon]').forEach((el) => el.onclick = (e) => {
@@ -312,34 +403,43 @@ $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('jo
 
 // ---------- lobby ----------
 function renderLobby(m) {
+  me.seat = (typeof m.you === 'number') ? m.you : me.seat;
   me.host = (m.hostSeat === me.seat);
   $('room-code').textContent = m.code;
   const list = $('seat-list');
   list.innerHTML = '';
   let filled = 0;
   m.seats.forEach((s, i) => {
-    if (s) filled++;
+    const empty = !s || s.empty;
+    if (!empty) filled++;
     const row = document.createElement('div');
-    row.className = 'seat-row' + (i === me.seat ? ' you' : '');
+    row.className = 'seat-row' + (i === me.seat ? ' you' : '') + (empty ? ' is-empty' : '');
     const team = document.createElement('span');
     team.className = 'badge';
     team.textContent = (i % 2 === 0 ? 'Team A' : 'Team B');
     const name = document.createElement('span');
-    name.className = 'name' + (s ? '' : ' empty');
-    name.textContent = s ? (s.bot ? '🤖 ' + s.name : s.name + (i === me.seat ? ' (you)' : '')) : 'empty';
-    if (s && !s.bot && s.rating != null) name.textContent += ' · ' + s.rating;
+    name.className = 'name' + (empty ? ' empty' : '');
+    name.textContent = empty ? 'Empty seat'
+      : (s.bot ? '🤖 ' + s.name : s.name + (i === me.seat ? ' (you)' : ''));
+    if (!empty && !s.bot && s.rating != null) name.textContent += ' · ' + s.rating + ' 🏆';
     row.appendChild(team); row.appendChild(name);
     if (i === m.hostSeat) { const h = document.createElement('span'); h.className = 'badge'; h.textContent = 'host'; row.appendChild(h); }
-    if (me.host && s && s.bot) { const k = document.createElement('button'); k.className = 'kick'; k.textContent = 'remove'; k.onclick = () => sendRaw({ t: 'removeSeat', seat: i }); row.appendChild(k); }
-    if (me.host && !s) { const b = document.createElement('button'); b.className = 'kick'; b.textContent = '+ bot'; b.onclick = () => sendRaw({ t: 'addBot', seat: i }); row.appendChild(b); }
+    if (me.host && !empty && s.bot) { const k = document.createElement('button'); k.className = 'kick'; k.textContent = 'remove'; k.onclick = () => sendRaw({ t: 'removeSeat', seat: i }); row.appendChild(k); }
+    if (me.host && empty) { const b = document.createElement('button'); b.className = 'kick'; b.textContent = '+ bot'; b.onclick = () => sendRaw({ t: 'addBot', seat: i }); row.appendChild(b); }
     list.appendChild(row);
   });
   $('host-controls').classList.toggle('hidden', !me.host);
+  if (typeof m.filled === 'number') filled = m.filled; // server truth
   $('start-btn').disabled = filled < 4;
   $('lobby-wait').textContent = me.host
     ? (filled < 4 ? 'Fill all 4 seats (invite friends or add bots) to start.' : 'Ready — press Start.')
     : 'Waiting for the host to start…';
 }
+$('copy-code').onclick = () => {
+  const code = $('room-code').textContent;
+  if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
+  toast('Room code ' + code + ' copied');
+};
 $('fill-bots-btn').onclick = () => sendRaw({ t: 'fillBots' });
 $('start-btn').onclick = () => { Sound.init(); sendRaw({ t: 'start' }); };
 $('leave-btn').onclick = () => { sendRaw({ t: 'leave' }); localStorage.removeItem(CODE_KEY); show('entry-screen'); };
@@ -391,6 +491,10 @@ function renderGame(m) {
   $('pts-us').textContent = m.roundCardPoints[myTeam];
   $('pts-them').textContent = m.roundCardPoints[1 - myTeam];
   $('pts-target').textContent = (m.highBidder != null ? m.highBid : '—');
+  const ms = $('match-score');
+  if (ms && m.matchPoints) {
+    ms.textContent = 'Match ' + m.matchPoints[myTeam] + ' – ' + m.matchPoints[1 - myTeam] + '  (first to 6)';
+  }
   const trumpEl = $('gv-trump');
   if (m.trumpRevealed) { trumpEl.textContent = SUIT_SYMBOL[m.trumpSuit]; }
   else if (m.trumpSuit) { trumpEl.textContent = SUIT_SYMBOL[m.trumpSuit] + ' (you)'; }
@@ -485,6 +589,8 @@ function renderGameOver(m) {
   const team = m.gameWinner;
   const iWon = (m.you % 2) === team;
   iWon ? Sound.win() : Sound.lose();
+  $('player-label').className = '';
+  $('player-label').textContent = 'Match complete';
   $('table-message').textContent = (team === 0 ? 'Team A' : 'Team B') + ' wins ' +
     m.matchPoints[0] + '–' + m.matchPoints[1] + (iWon ? ' — you won! 🎉' : '');
   const ctr = $('controls');

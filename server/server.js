@@ -57,7 +57,7 @@ let users = {};        // userId -> { id, name, passHash }
 let nameIndex = {};    // lowercased name -> userId
 function defaultStats() {
   return {
-    rating: 1000, games: 0, wins: 0, losses: 0,
+    rating: 0, games: 0, wins: 0, losses: 0, // rating = trophies, everyone starts at Bronze 0
     xp: 0, coins: 0, gems: 0, streak: 0, bestStreak: 0, lastDaily: 0,
     highestBid: 0, matches: [], // matches = recent game results (capped)
   };
@@ -278,6 +278,9 @@ function send(ws, obj) {
 function seatInfo(room) {
   return room.seats.map((s, i) => ({
     seat: i,
+    // Explicit emptiness: the client must not have to infer it from a null name
+    // (every entry is an object, so a falsy check would call empty seats "filled").
+    empty: !s,
     name: s ? s.name : null,
     bot: s ? !!s.bot : false,
     rating: (s && !s.bot) ? users[s.userId].stats.rating : null,
@@ -339,7 +342,10 @@ function authThrottle(ws) {
 
 function broadcastLobby(room) {
   const seats = seatInfo(room);
-  const msg = { t: 'room', code: room.code, hostSeat: room.hostSeat, started: room.started, seats };
+  const msg = {
+    t: 'room', code: room.code, hostSeat: room.hostSeat, started: room.started, seats,
+    filled: seats.filter((s) => !s.empty).length, // server is the source of truth
+  };
   for (const s of room.seats) if (s && !s.bot) send(s.ws, msg);
 }
 
@@ -388,19 +394,17 @@ function updateRatings(room) {
       log: G.actionLog,
     });
   } catch (e) { console.error('saveGame', e.message); }
-  const avg = [0, 0], cnt = [0, 0];
-  for (let i = 0; i < 4; i++) { const t = i % 2; avg[t] += ratingOf(room, i); cnt[t]++; }
-  avg[0] /= cnt[0]; avg[1] /= cnt[1];
-  const K = 24;
+  // Trophies: every completed game awards them, so a player always moves
+  // forward. Winning is worth much more than taking part.
+  const TROPHY_WIN = 30, TROPHY_LOSS = 10;
   for (let i = 0; i < 4; i++) {
     const s = room.seats[i];
     if (!s || s.bot) continue;
     const t = i % 2;
-    const expected = 1 / (1 + Math.pow(10, (avg[1 - t] - avg[t]) / 400));
     const score = (winner === t) ? 1 : 0;
     const st = users[s.userId].stats;
     const before = st.rating;
-    st.rating = Math.round(st.rating + K * (score - expected));
+    st.rating += score ? TROPHY_WIN : TROPHY_LOSS;
     st.games += 1;
     if (score) { st.wins += 1; st.streak += 1; if (st.streak > st.bestStreak) st.bestStreak = st.streak; }
     else { st.losses += 1; st.streak = 0; }
@@ -610,6 +614,33 @@ async function onMessage(ws, raw) {
   if (!ws.userId || !users[ws.userId]) return send(ws, { t: 'error', msg: 'Not authenticated' });
 
   // ----- rooms -----
+  // Real matchmaking: drop into any waiting public room, otherwise open one.
+  // This is what makes "Play Online" different from "Play with Friends".
+  if (m.t === 'quickMatch') {
+    if (!rateLimit(ws, 'createRoom', 5, 60000)) return send(ws, { t: 'error', msg: 'Slow down' });
+    for (const room of rooms.values()) {
+      if (room.started || !room.public) continue;
+      if (seatOfUser(room, ws.userId) >= 0) continue;
+      const seat = firstEmptySeat(room);
+      if (seat < 0) continue;
+      leaveCurrentRoom(ws);
+      room.seats[seat] = { userId: ws.userId, name: ws.name, bot: false, ws };
+      ws.room = room.code;
+      cancelAbandonCleanup(room);
+      send(ws, { t: 'joined', code: room.code, seat, matched: true });
+      broadcastLobby(room);
+      return;
+    }
+    // nothing open — host a public room others can be matched into
+    leaveCurrentRoom(ws);
+    const room = newRoom(ws.userId, ws.name);
+    room.public = true;
+    room.seats[0].ws = ws;
+    ws.room = room.code;
+    send(ws, { t: 'joined', code: room.code, seat: 0, matched: true });
+    return broadcastLobby(room);
+  }
+
   if (m.t === 'createRoom') {
     if (!rateLimit(ws, 'createRoom', 5, 60000)) return send(ws, { t: 'error', msg: 'Slow down — too many rooms' });
     leaveCurrentRoom(ws); // never hold a seat in two rooms (leaks the old one)

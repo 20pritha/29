@@ -1,0 +1,37 @@
+# Fly.io deployment — Mumbai region, best latency for players in South Asia.
+#
+# Deploy:
+#   fly launch --no-deploy --copy-config    # creates the app from this file
+#   fly volumes create twentynine_data --region bom --size 1
+#   fly deploy
+#
+# IMPORTANT: max_machines_running MUST stay 1. Live rooms are held in the
+# server's memory, so a second machine would put players in separate games.
+
+app = "twentynine"
+primary_region = "bom"   # bom = Mumbai. Alternatives: sin (Singapore), fra, iad.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8030"
+  USERS_DB = "/data/users.db"   # lives on the mounted volume, survives deploys
+
+[http_service]
+  internal_port = 8030
+  force_https = true
+  # Never auto-stop: a stopped machine drops every live game and forces a cold
+  # start. Costs a little more, but this is a realtime game.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  max_machines_running = 1
+
+[mounts]
+  source = "twentynine_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

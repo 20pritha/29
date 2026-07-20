@@ -46,13 +46,11 @@
       <div class="brand-lg side"><span class="brand-29">29</span><span class="brand-sub">TWENTY&#183;NINE</span></div>
       <nav id="nav">
         <a class="nav-item active" data-view="entry-screen">🏠 <span>Home</span></a>
-        <a class="nav-item" data-act="create">🌐 <span>Play Online</span></a>
+        <a class="nav-item" data-act="quick">🌐 <span>Play Online</span></a>
         <a class="nav-item" data-act="create">👥 <span>Play with Friends</span></a>
         <a class="nav-item" data-act="ranked">🏆 <span>Ranked</span></a>
-        <a class="nav-item" data-soon="Tournaments">🎯 <span>Tournaments</span></a>
         <a class="nav-item" data-soon="Daily Puzzle">🧩 <span>Daily Puzzle</span></a>
         <a class="nav-item" data-view="learn-screen">📘 <span>Learn 29</span></a>
-        <a class="nav-item" data-soon="Club">👑 <span>Club</span></a>
         <a class="nav-item" data-soon="Shop">🛒 <span>Shop</span></a>
         <a class="nav-item" data-view="profile-jump">🙍 <span>Profile</span></a>
         <a class="nav-item" data-view="settings-screen">⚙️ <span>Settings</span></a>
@@ -90,20 +88,20 @@
         <!-- ===== Home dashboard ===== -->
         <section id="entry-screen" class="view">
           <div class="feature-row">
-            <div class="feature-card teal" data-act="create">
-              <h3>PLAY ONLINE</h3><p>Play with players around the world</p>
+            <div class="feature-card teal" data-act="quick">
+              <h3>PLAY ONLINE</h3><p>Match into an open game, or start one</p>
               <div class="mini-fan">
                 <div class="fan-card sm red">J<span>&#9830;</span></div>
                 <div class="fan-card sm black">9<span>&#9827;</span></div>
                 <div class="fan-card sm black">A<span>&#9824;</span></div>
               </div>
-              <button class="gold-btn">PLAY NOW</button>
+              <button class="gold-btn">QUICK MATCH</button>
             </div>
             <div class="feature-card blue" data-act="ranked">
               <h3>RANKED</h3><p>Climb the ladder and become a legend</p>
               <div id="rc-emblem" class="emblem">◆</div>
               <div id="rc-tier" class="emblem-tier">—</div>
-              <div id="rc-rating" class="emblem-rating">🏆 —</div>
+              <div id="rc-rating" class="emblem-rating">🏆 0 trophies</div>
               <button class="gold-btn ghost">VIEW RANK</button>
             </div>
             <div class="feature-card green" data-act="create">
@@ -127,7 +125,7 @@
               <div class="tile-ico">🎯</div><h4>MISSIONS</h4>
               <p>0 / 6 completed</p>
             </div>
-            <div class="tile season-tile" data-act="ranked">
+            <div class="tile season-tile" data-soon="Season Pass">
               <div class="tile-ico">🛡️</div><h4>SEASON</h4>
               <p id="season">—</p>
             </div>
@@ -150,7 +148,7 @@
                 <div><b id="pf-winrate">0%</b><span>Win rate</span></div>
                 <div><b id="pf-highbid">—</b><span>Highest bid</span></div>
                 <div><b id="pf-streak">0</b><span>Best streak</span></div>
-                <div><b id="pf-rating">1000</b><span>Rating</span></div>
+                <div><b id="pf-rating">1000</b><span>Trophies</span></div>
               </div>
             </div>
 
@@ -290,18 +288,48 @@
           </div>
         </section>
 
+        <!-- ===== Ranked ===== -->
+        <section id="ranked-screen" class="view hidden">
+          <div class="centred">
+            <div class="rank-hero">
+              <div id="rk-icon" class="rank-hero-icon">🥉</div>
+              <div id="rk-tier" class="rank-hero-tier">Bronze</div>
+              <div class="rank-hero-trophies"><span id="rk-trophies">0</span> 🏆 trophies</div>
+              <div class="rank-prog">
+                <div class="bar"><div id="rk-bar" class="bar-fill"></div></div>
+                <div id="rk-next" class="rank-next"></div>
+              </div>
+              <button class="glow-btn" data-act="create">Play a ranked game</button>
+              <p class="hint">Every finished game earns trophies &mdash; <b>+30</b> for a win,
+                <b>+10</b> for playing. You never lose them.</p>
+            </div>
+            <div class="panel-card">
+              <div class="card-head"><span>ALL RANKS</span></div>
+              <div id="rk-ladder" class="rank-ladder"></div>
+            </div>
+          </div>
+        </section>
+
         <!-- ===== Lobby ===== -->
         <section id="lobby-screen" class="view hidden">
-          <div class="panel-card lobby">
-            <div class="card-head"><span>ROOM <span id="room-code"></span></span></div>
-            <p class="hint">Share the code. Seats fill clockwise. Empty seats can be bots.</p>
-            <div id="seat-list"></div>
-            <div id="host-controls" class="btn-row hidden">
-              <button id="fill-bots-btn" class="ghost-btn">Fill with bots</button>
-              <button id="start-btn" class="glow-btn">Start game</button>
+          <div class="centred">
+            <div class="lobby-card">
+              <p class="lobby-label">ROOM CODE</p>
+              <div class="lobby-code">
+                <span id="room-code">----</span>
+                <button id="copy-code" class="ghost-btn small" title="Copy code">Copy</button>
+              </div>
+              <p class="hint">Share this code so friends can join. Fill any empty seats with bots.</p>
+
+              <div id="seat-list"></div>
+
+              <div id="host-controls" class="lobby-actions hidden">
+                <button id="fill-bots-btn" class="ghost-btn">Fill with bots</button>
+                <button id="start-btn" class="glow-btn">Start game</button>
+              </div>
+              <p id="lobby-wait" class="hint"></p>
+              <button id="leave-btn" class="ghost-btn small">Leave room</button>
             </div>
-            <p id="lobby-wait" class="hint"></p>
-            <button id="leave-btn" class="ghost-btn small">Leave room</button>
           </div>
         </section>
 
@@ -314,6 +342,7 @@
                 <div class="pts-row"><span>US</span><span>THEM</span></div>
                 <div class="pts-row big"><span id="pts-us">0</span><span id="pts-them">0</span></div>
                 <div class="pts-target">Target: <span id="pts-target">—</span></div>
+                <div id="match-score" class="match-score"></div>
               </div>
               <div class="gpanel">
                 <div class="gpanel-title">TRUMP</div>
@@ -353,10 +382,10 @@
 
     <nav id="bottomnav">
       <a class="bn-item active" data-view="entry-screen">🏠<span>Home</span></a>
-      <a class="bn-item" data-soon="Social">👥<span>Social</span></a>
-      <a class="bn-item" data-act="create">🎴<span>Play</span></a>
-      <a class="bn-item" data-soon="Events">📅<span>Events</span></a>
-      <a class="bn-item" data-soon="Shop">🛒<span>Shop</span></a>
+      <a class="bn-item" data-act="ranked">🏆<span>Ranked</span></a>
+      <a class="bn-item" data-act="quick">🎴<span>Play</span></a>
+      <a class="bn-item" data-view="learn-screen">📘<span>Learn</span></a>
+      <a class="bn-item" data-view="settings-screen">⚙️<span>Settings</span></a>
     </nav>
   </div>
 
@@ -367,6 +396,7 @@
   </div>
 
   <div id="whoami" class="hidden"></div>
+  <div id="conn-status" class="hidden"></div>
   <div id="toast" class="hidden"></div>
 
   <script src="config.js"></script>

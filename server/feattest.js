@@ -89,9 +89,10 @@ server.listen(0, async ()=>{
   assert(B.statsMsgs.length>=1, 'B got no stats update');
   const dA=A.stats.rating-ratingBeforeA, dB=B.stats.rating-ratingBeforeB;
   assert(A.stats.games>=1 && B.stats.games>=1, 'games not incremented');
-  assert(dA!==0 && dB!==0, 'ratings did not change ('+dA+','+dB+')');
-  // A and B are opponents (seats 0 vs 1) → opposite outcomes
-  assert(Math.sign(dA)===-Math.sign(dB), 'opponent rating deltas not opposite ('+dA+' vs '+dB+')');
+  // Trophies: every finished game awards them, winner more than loser, never negative
+  assert(dA>0 && dB>0, 'both players should gain trophies ('+dA+','+dB+')');
+  assert(dA!==dB, 'winner and loser should gain different amounts ('+dA+' vs '+dB+')');
+  assert(Math.max(dA,dB)===30 && Math.min(dA,dB)===10, 'expected +30 win / +10 loss, got '+dA+'/'+dB);
 
   // rematch: host restarts, new hand begins
   const gamesBefore=A.state.trickCount;
@@ -101,6 +102,6 @@ server.listen(0, async ()=>{
 
   console.log('deltas A='+dA+' B='+dB+' | A.games='+A.stats.games+' B.games='+B.stats.games+' | dropped='+dropped+' rejoined='+rejoined);
   if(errs.length){ console.log('ERRORS:\n'+errs.join('\n')); process.exit(1); }
-  console.log('FEATURES OK: Elo updated (opposite deltas), chat delivered, reconnect reclaimed seat, rematch restarted');
+  console.log('FEATURES OK: trophies awarded (+30 win / +10 play), chat delivered, reconnect reclaimed seat, rematch restarted');
   process.exit(0);
 });

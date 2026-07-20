@@ -359,6 +359,11 @@ const Game = {
       trumpSuit: this.trumpSuit,
     };
 
+    // Announce the hand result and the running match score, so the log doesn't
+    // jump straight from "won trick 8" to "New hand dealt".
+    this.narration = this.pname(this.highBidder) + ' bid ' + this.highBid + ' and '
+      + (made ? 'MADE it' : 'was SET') + ' (' + bidTeamPoints + ' pts). '
+      + 'Match now ' + this.matchPoints[0] + '–' + this.matchPoints[1] + '.';
     this.logAction({
       a: 'hand', bidder: this.highBidder, bid: this.highBid, made,
       points: this.roundCardPoints.slice(), winnerTeam, match: this.matchPoints.slice(),
