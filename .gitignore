@@ -1,0 +1,12 @@
+# dependencies
+node_modules/
+
+# account database (contains password hashes — must never be committed)
+server/users.db
+server/users.db-shm
+server/users.db-wal
+server/users.json
+
+# local noise
+.DS_Store
+*.log
