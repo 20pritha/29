@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 
 function show(screen) {
   const overlays = ['home-screen', 'auth-screen'];
-  const views = ['entry-screen', 'lobby-screen', 'game-screen'];
+  const views = ['entry-screen', 'lobby-screen', 'game-screen', 'learn-screen', 'settings-screen'];
   overlays.forEach((s) => $(s).classList.toggle('hidden', s !== screen));
   const inApp = views.includes(screen);
   $('app').classList.toggle('hidden', !inApp);
@@ -22,6 +22,13 @@ function show(screen) {
   document.querySelectorAll('.nav-item, .bn-item').forEach((el) =>
     el.classList.toggle('active', el.dataset.view === screen));
   if (screen === 'entry-screen') sendRaw({ t: 'home' });
+  if (screen === 'learn-screen') buildLearn();
+  if (screen === 'settings-screen') {
+    const a = $('set-account');
+    if (a) a.textContent = me.guest
+      ? 'Playing as a guest (' + me.name + '). Create an account to keep your rank and stats.'
+      : 'Signed in as ' + (me.name || '—') + '.';
+  }
 }
 function toast(msg) {
   const t = $('toast');
@@ -43,8 +50,15 @@ function connect() {
   };
   ws.onmessage = (e) => onMessage(JSON.parse(e.data));
   ws.onclose = () => toast('Disconnected. Reload to reconnect.');
+  ws.onerror = () => toast('Cannot reach server. Start it and open http://localhost:8030');
 }
-function sendRaw(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+// Queue while connecting so a click during handshake is not lost.
+let pending = [];
+function sendRaw(o) {
+  if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return; }
+  if (ws && ws.readyState === 0) { pending.push(o); return; }
+  toast('Not connected to server.');
+}
 function action(a) { Sound.init(); sendRaw(Object.assign({ t: 'action' }, a)); }
 
 // ---------- rank tiers / progression ----------
@@ -327,7 +341,8 @@ $('chat-tab').onclick = () => { $('chat-tab').classList.add('active'); $('log-ta
 // ---------- game ----------
 function cardEl(card, { playable = false, onClick = null } = {}) {
   const d = document.createElement('div');
-  d.className = 'card ' + SUIT_COLOR[card.suit];
+  // suit-<name> lets the colour-blind (four-colour) mode restyle each suit
+  d.className = 'card ' + SUIT_COLOR[card.suit] + ' suit-' + card.suit;
   d.innerHTML = '<span class="rank">' + card.rank + '</span><span class="suit">' + SUIT_SYMBOL[card.suit] + '</span>';
   if (playable) { d.classList.add('playable'); d.addEventListener('click', onClick); }
   else d.classList.add('disabled');
@@ -463,6 +478,84 @@ function renderGameOver(m) {
   ctr.appendChild(btn);
 }
 
+// ---------- Learn 29: build the card examples from the engine's own constants,
+// so the tutorial can never drift from the actual rules ----------
+function buildLearn() {
+  const rankRow = $('learn-rank'), pointRow = $('learn-points');
+  if (!rankRow || rankRow.childElementCount) return; // build once
+  // strongest → weakest, straight from TRICK_STRENGTH
+  const byStrength = RANKS.slice().sort((a, b) => TRICK_STRENGTH[b] - TRICK_STRENGTH[a]);
+  const suits = ['spades', 'hearts', 'diamonds', 'clubs'];
+  byStrength.forEach((rank, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'learn-card';
+    wrap.appendChild(cardEl({ rank, suit: suits[i % 4], id: rank }));
+    const cap = document.createElement('span');
+    cap.className = 'cap';
+    cap.textContent = i === 0 ? 'highest' : (i === byStrength.length - 1 ? 'lowest' : '');
+    wrap.appendChild(cap);
+    rankRow.appendChild(wrap);
+  });
+  // point-scoring ranks only
+  RANKS.filter((r) => CARD_POINTS[r] > 0)
+    .sort((a, b) => CARD_POINTS[b] - CARD_POINTS[a])
+    .forEach((rank, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'learn-card';
+      wrap.appendChild(cardEl({ rank, suit: suits[i % 4], id: 'p' + rank }));
+      const cap = document.createElement('span');
+      cap.className = 'cap';
+      cap.textContent = CARD_POINTS[rank] + (CARD_POINTS[rank] === 1 ? ' point' : ' points');
+      wrap.appendChild(cap);
+      pointRow.appendChild(wrap);
+    });
+}
+
+// ---------- settings ----------
+const PREFS_KEY = 'twentynine-prefs';
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; }
+}
+function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) {} }
+function applyPrefs(p) {
+  document.body.classList.toggle('cb', !!p.colorblind);
+  document.body.classList.toggle('big-cards', !!p.bigCards);
+  document.body.classList.toggle('reduce-motion', !!p.reduceMotion);
+  Sound.setEnabled(p.sound !== false);
+  const mb = $('mute-btn');
+  if (mb) mb.innerHTML = (p.sound === false) ? '🔇' : '🔊';
+}
+function initSettings() {
+  const p = loadPrefs();
+  if (p.sound === undefined) p.sound = localStorage.getItem('twentynine-muted') !== '1';
+  applyPrefs(p);
+  const bind = (id, key) => {
+    const el = $(id);
+    if (!el) return;
+    el.checked = key === 'sound' ? p.sound !== false : !!p[key];
+    el.onchange = () => {
+      p[key] = el.checked;
+      savePrefs(p); applyPrefs(p);
+      if (key === 'sound') { Sound.init(); localStorage.setItem('twentynine-muted', el.checked ? '0' : '1'); }
+    };
+  };
+  bind('set-sound', 'sound');
+  bind('set-motion', 'reduceMotion');
+  bind('set-colorblind', 'colorblind');
+  bind('set-bigcards', 'bigCards');
+  const so = $('set-signout');
+  if (so) so.onclick = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(CODE_KEY); location.reload(); };
+  // the topbar speaker button and the Settings checkbox stay in sync
+  const mb = $('mute-btn');
+  if (mb) mb.onclick = () => {
+    Sound.init();
+    p.sound = !(p.sound !== false);
+    savePrefs(p); applyPrefs(p);
+    const c = $('set-sound'); if (c) c.checked = p.sound !== false;
+    localStorage.setItem('twentynine-muted', p.sound ? '0' : '1');
+  };
+}
+
 // ---------- mute ----------
 (function initMute() {
   const muted = localStorage.getItem('twentynine-muted') === '1';
@@ -478,4 +571,5 @@ function renderGameOver(m) {
   };
 })();
 
+initSettings();
 connect();

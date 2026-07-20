@@ -19,10 +19,8 @@
         <div class="fan-card black">J<span>&#9827;</span></div>
         <div class="fan-card red">9<span>&#9829;</span></div>
       </div>
-      <p class="splash-tag">Bid bold. Trap the trump. Take the round.</p>
       <button id="home-guest" class="glow-btn">Play as guest</button>
       <button id="home-login" class="ghost-btn">Log in / Sign up</button>
-      <a class="hint solo" href="solo.html">or play solo vs bots &#8599;</a>
     </div>
   </section>
 
@@ -53,11 +51,11 @@
         <a class="nav-item" data-act="ranked">🏆 <span>Ranked</span></a>
         <a class="nav-item" data-soon="Tournaments">🎯 <span>Tournaments</span></a>
         <a class="nav-item" data-soon="Daily Puzzle">🧩 <span>Daily Puzzle</span></a>
-        <a class="nav-item" data-soon="Learn 29">📘 <span>Learn 29</span></a>
+        <a class="nav-item" data-view="learn-screen">📘 <span>Learn 29</span></a>
         <a class="nav-item" data-soon="Club">👑 <span>Club</span></a>
         <a class="nav-item" data-soon="Shop">🛒 <span>Shop</span></a>
         <a class="nav-item" data-view="profile-jump">🙍 <span>Profile</span></a>
-        <a class="nav-item" data-soon="Settings">⚙️ <span>Settings</span></a>
+        <a class="nav-item" data-view="settings-screen">⚙️ <span>Settings</span></a>
       </nav>
       <div class="side-profile">
         <div id="sb-avatar" class="avatar sm"></div>
@@ -185,6 +183,110 @@
             <input id="join-code" placeholder="Enter room code" maxlength="4" style="text-transform:uppercase" />
             <button id="join-btn" class="gold-btn">Join room</button>
             <span id="entry-msg" class="msg"></span>
+          </div>
+        </section>
+
+        <!-- ===== Learn 29 ===== -->
+        <section id="learn-screen" class="view hidden">
+          <div class="learn">
+            <h2 class="learn-title">How to play Twenty&#8211;Nine</h2>
+            <p class="learn-lede">A 4-player partnership trick-taking game. You and the player
+              opposite you are a team. Bid what you think your team can score, then win tricks
+              to prove it.</p>
+
+            <div class="panel-card learn-sec">
+              <h3>1 &middot; The cards</h3>
+              <p>32 cards &mdash; 7 up to Ace. <b>Jacks and Nines are the strongest</b>, not Aces.
+                Strongest on the left:</p>
+              <div id="learn-rank" class="learn-cards"></div>
+              <p>Only four ranks are worth points. Everything else is worth zero:</p>
+              <div id="learn-points" class="learn-cards"></div>
+              <p class="learn-note">28 points live in the cards, and the <b>last trick is worth 1
+                more</b> &mdash; 29 in total. That's the name.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>2 &middot; The deal</h3>
+              <p>Everyone gets <b>4 cards</b>. You bid on those alone &mdash; then everyone gets
+                <b>4 more</b>, for 8 each. Partners sit opposite: you and the player across the
+                table are one team.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>3 &middot; Bidding</h3>
+              <p>Starting left of the dealer, each player either <b>bids higher</b> or
+                <b>passes</b>. Bids run from <b>16 to 28</b>. Once you pass you're out of the
+                auction for that hand.</p>
+              <p>The highest bidder is promising their <b>team</b> will capture at least that many
+                points this hand. Bid too high and you hand the round to your opponents.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>4 &middot; Trump &mdash; the twist</h3>
+              <p>The winning bidder secretly picks a <b>trump suit</b> from their own cards.
+                Nobody else knows it, and <b>it does nothing until it is revealed</b>.</p>
+              <p>When you <b>can't follow the suit that was led</b>, you may ask for trump to be
+                revealed. From then on it's face-up for everyone, and trump beats any normal card.
+                Careful: if you're the one who revealed it, you must play a trump that turn if you
+                hold one.</p>
+              <p class="learn-note">Revealing early gives information away. Revealing late can lose
+                you tricks. That timing is the heart of the game.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>5 &middot; Playing a trick</h3>
+              <p>The lead player puts down any card. Everyone else <b>must follow that suit if they
+                can</b>. If you can't, play anything.</p>
+              <p>Highest card of the led suit wins &mdash; unless someone trumps it once trump is
+                revealed, in which case the highest trump wins. The winner leads next. Eight tricks
+                per hand.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>6 &middot; Scoring</h3>
+              <p>Add up the points your team captured, plus 1 if you took the last trick.</p>
+              <ul>
+                <li>Bidding team <b>reaches its bid</b> &rarr; they win the hand.</li>
+                <li>Bidding team <b>falls short</b> &rarr; they're <b>set</b>, and the defenders win it.</li>
+              </ul>
+              <p>The side that wins the hand takes <b>1 match point</b>. First team to
+                <b>6 match points</b> wins the match.</p>
+            </div>
+
+            <div class="panel-card learn-sec">
+              <h3>Quick tips</h3>
+              <ul>
+                <li>Count the Jacks and Nines &mdash; they're 5 of the 29 points on their own.</li>
+                <li>Your partner's win is your win. Throw point cards onto tricks they're winning.</li>
+                <li>Don't waste high trumps on worthless tricks.</li>
+                <li>If an opponent shows they're out of a suit, avoid leading it &mdash; they'll trump.</li>
+              </ul>
+              <button class="glow-btn" data-act="create">Play a game</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Settings ===== -->
+        <section id="settings-screen" class="view hidden">
+          <div class="learn">
+            <h2 class="learn-title">Settings</h2>
+            <div class="panel-card learn-sec">
+              <h3>Game</h3>
+              <label class="setting"><input type="checkbox" id="set-sound" /> <span>Sound effects</span></label>
+              <label class="setting"><input type="checkbox" id="set-motion" /> <span>Reduce animations</span></label>
+            </div>
+            <div class="panel-card learn-sec">
+              <h3>Accessibility</h3>
+              <label class="setting"><input type="checkbox" id="set-colorblind" /> <span>Colour-blind friendly suits <em>(four-colour deck)</em></span></label>
+              <label class="setting"><input type="checkbox" id="set-bigcards" /> <span>Larger cards</span></label>
+              <p class="learn-note">Suits always show their symbol as well as colour, so they stay
+                distinguishable either way.</p>
+            </div>
+            <div class="panel-card learn-sec">
+              <h3>Account</h3>
+              <p id="set-account" class="learn-note"></p>
+              <button id="set-signout" class="ghost-btn">Sign out</button>
+            </div>
           </div>
         </section>
 

@@ -54,13 +54,34 @@ function makeDeck() {
   return deck;
 }
 
-function shuffle(deck) {
+/**
+ * Fisher-Yates shuffle. Accepts an injectable RNG so deals are reproducible
+ * from a seed (needed for replays and "prove this deal was fair").
+ * @param {Array} deck
+ * @param {() => number} [rng] uniform [0,1) source; defaults to Math.random
+ */
+function shuffle(deck, rng) {
+  const rand = rng || Math.random;
   const a = deck.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * Deterministic PRNG (mulberry32) — same seed always yields the same sequence.
+ * @param {number} seed @returns {() => number}
+ */
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function cardLabel(card) {

@@ -33,6 +33,12 @@ const USERS_FILE = path.join(__dirname, 'users.json');
 const BOT_MS = +process.env.BOT_MS || 900;
 const RESOLVE_MS = +process.env.RESOLVE_MS || 1300;
 const NEXT_MS = +process.env.NEXT_MS || 4500;
+// How long an in-progress room survives with zero connected humans before it is
+// torn down (players get this long to reconnect). Prevents abandoned games from
+// running bots forever.
+const ABANDON_MS = +process.env.ABANDON_MS || 120000;
+// Session token lifetime.
+const TOKEN_TTL_MS = +process.env.TOKEN_TTL_MS || 30 * 24 * 3600 * 1000;
 
 // ---------- engine loader (per-room isolated instance) ----------
 const ENGINE_SRC = ['cards.js', 'game.js', 'ai.js']
@@ -58,6 +64,7 @@ function defaultStats() {
 }
 function leaderboard() {
   return Object.values(users)
+    .filter((u) => !u.guest) // ranked board: real accounts only
     .sort((a, b) => b.stats.rating - a.stats.rating)
     .slice(0, 10)
     .map((u, i) => ({ rank: i + 1, name: u.name, rating: u.stats.rating }));
@@ -100,13 +107,29 @@ function persistUser(id) {
 }
 loadUsers();
 
-const tokens = new Map(); // token -> userId
+const tokens = new Map(); // token -> { userId, exp }
 
 function issueToken(userId) {
   const tok = crypto.randomBytes(24).toString('hex');
-  tokens.set(tok, userId);
+  tokens.set(tok, { userId, exp: Date.now() + TOKEN_TTL_MS });
   return tok;
 }
+/** Resolve a token to a userId, honouring expiry. @returns {string|null} */
+function userIdForToken(tok) {
+  const rec = tokens.get(tok);
+  if (!rec) return null;
+  if (rec.exp <= Date.now()) { tokens.delete(tok); return null; }
+  return rec.userId;
+}
+/** Drop every token belonging to a user (used when a guest is reaped). */
+function purgeTokensFor(userId) {
+  for (const [tok, rec] of tokens) if (rec.userId === userId) tokens.delete(tok);
+}
+// Periodic sweep so expired tokens don't accumulate.
+setInterval(() => {
+  const now = Date.now();
+  for (const [tok, rec] of tokens) if (rec.exp <= now) tokens.delete(tok);
+}, 3600 * 1000).unref?.();
 
 // ---------- rooms ----------
 const rooms = new Map(); // code -> room
@@ -135,6 +158,54 @@ function newRoom(hostUserId, hostName) {
 
 function seatOfUser(room, userId) {
   return room.seats.findIndex((s) => s && !s.bot && s.userId === userId);
+}
+/** How many human seats currently have a live socket. */
+function humansConnected(room) {
+  return room.seats.filter((s) => s && !s.bot && s.ws && s.ws.readyState === 1).length;
+}
+/** Is this user seated in any room right now? */
+function isSeatedAnywhere(userId) {
+  for (const room of rooms.values()) if (seatOfUser(room, userId) >= 0) return true;
+  return false;
+}
+function clearRoomTimers(room) {
+  for (const k of ['bot', 'resolve', 'next']) {
+    if (room.timers[k]) { clearTimeout(room.timers[k]); room.timers[k] = null; }
+  }
+}
+/** Is any live socket authenticated as this user? */
+function isConnected(userId) {
+  for (const c of wss.clients) if (c.userId === userId && c.readyState === 1) return true;
+  return false;
+}
+/** Delete an ephemeral guest account once it is gone for good. */
+function reapGuest(userId) {
+  const u = users[userId];
+  if (u && u.guest && !isSeatedAnywhere(userId) && !isConnected(userId)) {
+    purgeTokensFor(userId);
+    delete users[userId];
+  }
+}
+function destroyRoom(room) {
+  clearRoomTimers(room);
+  if (room.abandonTimer) { clearTimeout(room.abandonTimer); room.abandonTimer = null; }
+  const occupants = room.seats.filter((s) => s && !s.bot && s.userId).map((s) => s.userId);
+  room.engine = null;
+  rooms.delete(room.code);
+  occupants.forEach(reapGuest); // their seat is gone now
+}
+/** Everyone dropped: stop simulating and reap the room unless someone returns. */
+function scheduleAbandonCleanup(room) {
+  clearRoomTimers(room); // stop running bots for an empty room
+  if (room.abandonTimer) return;
+  room.abandonTimer = setTimeout(() => {
+    room.abandonTimer = null;
+    if (humansConnected(room) === 0) destroyRoom(room);
+  }, ABANDON_MS);
+  room.abandonTimer.unref?.();
+}
+function cancelAbandonCleanup(room) {
+  if (room.abandonTimer) { clearTimeout(room.abandonTimer); room.abandonTimer = null; }
 }
 function firstEmptySeat(room) {
   return room.seats.findIndex((s) => s === null);
@@ -230,6 +301,34 @@ function sendAuthOk(ws, id, token) {
  * proxy, add IP-based limiting too — one client can open many sockets.)
  * @param {import('ws')} ws @returns {boolean} true if the attempt is allowed
  */
+/**
+ * Generic per-connection sliding-window rate limit.
+ * @param {object} ws @param {string} key bucket name
+ * @param {number} max allowed events per window @param {number} windowMs
+ * @returns {boolean} true if allowed
+ */
+function rateLimit(ws, key, max, windowMs) {
+  const now = Date.now();
+  ws._rl = ws._rl || {};
+  const arr = (ws._rl[key] || []).filter((t) => now - t < windowMs);
+  ws._rl[key] = arr;
+  if (arr.length >= max) return false;
+  arr.push(now);
+  return true;
+}
+
+/**
+ * Make sure hostSeat points at a connected human. Without this, a host that
+ * drops mid-game leaves the room permanently hostless — no rematch, no start.
+ * @param {Room} room
+ */
+function reassignHost(room) {
+  const cur = room.seats[room.hostSeat];
+  if (cur && !cur.bot && cur.ws && cur.ws.readyState === 1) return; // still fine
+  const next = room.seats.findIndex((s) => s && !s.bot && s.ws && s.ws.readyState === 1);
+  if (next >= 0) room.hostSeat = next;
+}
+
 function authThrottle(ws) {
   const now = Date.now();
   ws._authHits = (ws._authHits || []).filter((t) => now - t < 60000);
@@ -278,6 +377,17 @@ function ratingOf(room, seat) {
 function updateRatings(room) {
   const G = room.engine.G;
   const winner = G.gameWinner; // 0 or 1
+
+  // Archive the whole match: seed + action log make it exactly replayable later
+  // (bug reports, replays, future coach analysis).
+  const gameId = crypto.randomUUID();
+  try {
+    store.saveGame({
+      id: gameId, version: G.version, seed: G.seed, createdAt: Date.now(), winner,
+      players: room.seats.map((s) => (s ? (s.bot ? { bot: true, name: s.name } : { userId: s.userId, name: s.name }) : null)),
+      log: G.actionLog,
+    });
+  } catch (e) { console.error('saveGame', e.message); }
   const avg = [0, 0], cnt = [0, 0];
   for (let i = 0; i < 4; i++) { const t = i % 2; avg[t] += ratingOf(room, i); cnt[t]++; }
   avg[0] /= cnt[0]; avg[1] /= cnt[1];
@@ -309,6 +419,7 @@ function updateRatings(room) {
       r: score ? 'W' : 'L', bid,
       made: G.lastResult ? !!G.lastResult.made : false,
       delta: s._delta, partner, at: Date.now(),
+      gameId, seed: G.seed, version: G.version, // replayable reference
     });
     st.matches = st.matches.slice(0, 12);
     persistUser(s.userId);
@@ -328,6 +439,8 @@ function updateRatings(room) {
 function onEngineChange(room) {
   const G = room.engine.G;
   broadcastState(room);
+  // Don't burn timers simulating a game nobody is watching.
+  if (humansConnected(room) === 0) { scheduleAbandonCleanup(room); return; }
 
   if (G._pendingResolve) {
     if (!room.timers.resolve) {
@@ -394,6 +507,17 @@ function applyAction(room, seat, a) {
   }
 }
 
+/**
+ * Remove this socket from whatever room it is currently in. Called before
+ * creating/joining another room so a user never holds two seats (which used to
+ * keep the old room alive forever).
+ */
+function leaveCurrentRoom(ws) {
+  if (!ws.room || !rooms.has(ws.room)) { ws.room = null; return; }
+  handleDisconnect(ws);
+  ws.room = null;
+}
+
 // If a human disconnects mid-game, hand their seat to a bot so play continues.
 function handleDisconnect(ws) {
   const room = ws.room && rooms.get(ws.room);
@@ -404,8 +528,14 @@ function handleDisconnect(ws) {
     // Keep the seat reserved; a stand-in bot plays until the human reconnects.
     room.seats[seat].ws = null;
     room.seats[seat].disconnected = true;
-    broadcastState(room);
-    onEngineChange(room); // nudge stand-in if it's their turn
+    if (humansConnected(room) === 0) {
+      // Nobody left watching: stop simulating and reap the room after a grace period.
+      scheduleAbandonCleanup(room);
+    } else {
+      reassignHost(room); // the host may have been the one who left
+      broadcastState(room);
+      onEngineChange(room); // nudge stand-in if it's their turn
+    }
   } else {
     room.seats[seat] = null;
     if (seat === room.hostSeat) {
@@ -441,6 +571,8 @@ async function onMessage(ws, raw) {
     const name = String(m.user || '').trim();
     const pass = String(m.pass || '');
     if (name.length < 2 || name.length > 20) return send(ws, { t: 'authErr', msg: 'Name 2-20 chars' });
+    // reserved: guest accounts are auto-named Guest-XXXX; block impersonation
+    if (/^guest-/i.test(name)) return send(ws, { t: 'authErr', msg: 'That name prefix is reserved' });
     if (pass.length < 4 || pass.length > 128) return send(ws, { t: 'authErr', msg: 'Password must be 4-128 chars' });
     if (nameIndex[name.toLowerCase()]) return send(ws, { t: 'authErr', msg: 'Name taken' });
     const passHash = await bcrypt.hash(pass, 10);
@@ -462,7 +594,7 @@ async function onMessage(ws, raw) {
     return sendAuthOk(ws, id, issueToken(id));
   }
   if (m.t === 'auth') { // token reconnect
-    const id = tokens.get(String(m.token || ''));
+    const id = userIdForToken(String(m.token || ''));
     if (!id || !users[id]) return send(ws, { t: 'authErr', msg: 'Session expired' });
     authUser(ws, id);
     return sendAuthOk(ws, id, m.token);
@@ -479,6 +611,8 @@ async function onMessage(ws, raw) {
 
   // ----- rooms -----
   if (m.t === 'createRoom') {
+    if (!rateLimit(ws, 'createRoom', 5, 60000)) return send(ws, { t: 'error', msg: 'Slow down — too many rooms' });
+    leaveCurrentRoom(ws); // never hold a seat in two rooms (leaks the old one)
     const room = newRoom(ws.userId, ws.name);
     room.seats[0].ws = ws;
     ws.room = room.code;
@@ -486,9 +620,12 @@ async function onMessage(ws, raw) {
     return broadcastLobby(room);
   }
   if (m.t === 'joinRoom') {
-    const room = rooms.get(String(m.code || '').toUpperCase());
+    const code = String(m.code || '').toUpperCase();
+    if (!/^[A-Z0-9]{4}$/.test(code)) return send(ws, { t: 'error', msg: 'Invalid room code' });
+    const room = rooms.get(code);
     if (!room) return send(ws, { t: 'error', msg: 'Room not found' });
     if (room.started) return send(ws, { t: 'error', msg: 'Game already started' });
+    if (ws.room !== room.code) leaveCurrentRoom(ws); // drop the previous room first
     // already seated? reconnect
     let seat = seatOfUser(room, ws.userId);
     if (seat < 0) {
@@ -532,8 +669,10 @@ async function onMessage(ws, raw) {
     room.seats[seat].ws = ws;
     room.seats[seat].disconnected = false;
     ws.room = room.code;
+    cancelAbandonCleanup(room); // someone came back — keep the room alive
     send(ws, { t: 'joined', code: room.code, seat });
-    if (room.started) broadcastState(room); else broadcastLobby(room);
+    if (room.started) { broadcastState(room); onEngineChange(room); } // resume play
+    else broadcastLobby(room);
     return;
   }
 
@@ -542,6 +681,7 @@ async function onMessage(ws, raw) {
   const mySeat = seatOfUser(room, ws.userId);
 
   if (m.t === 'chat') {
+    if (!rateLimit(ws, 'chat', 10, 10000)) return; // anti-flood
     const text = String(m.text || '').slice(0, 200).trim();
     if (!text || mySeat < 0) return;
     const from = room.seats[mySeat].name;
@@ -614,7 +754,12 @@ wss.on('connection', (ws) => {
       .then(() => onMessage(ws, data.toString()))
       .catch((e) => { console.error('onMessage', e); send(ws, { t: 'error', msg: 'Server error' }); });
   });
-  ws.on('close', () => handleDisconnect(ws));
+  ws.on('close', () => {
+    handleDisconnect(ws);
+    // Guests are ephemeral: reap once they're gone and hold no seat (a seated
+    // guest is reaped later, when their room is destroyed).
+    if (ws.userId) reapGuest(ws.userId);
+  });
   ws.on('error', () => {});
 });
 

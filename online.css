@@ -194,6 +194,37 @@ input { font-family: inherit; }
 .quick-join { display: flex; gap: 8px; align-items: center; margin-top: 14px; max-width: 460px; }
 .quick-join input { flex: 1; }
 
+/* ============ learn / settings ============ */
+.learn { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.learn-title { color: var(--gold); font-size: 1.5rem; }
+.learn-lede { color: var(--dim); }
+.learn-sec h3 { color: var(--gold); font-size: 1rem; margin-bottom: 8px; }
+.learn-sec p { margin-bottom: 8px; line-height: 1.55; }
+.learn-sec ul { margin: 0 0 8px 18px; }
+.learn-sec li { margin-bottom: 5px; line-height: 1.5; }
+.learn-note { color: var(--dim); font-size: 0.85rem; border-left: 2px solid var(--gold); padding-left: 10px; }
+.learn-cards { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 10px 0 12px; }
+.learn-card { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.learn-card .cap { font-size: 0.7rem; color: var(--dim); }
+.learn-sec button { margin-top: 6px; }
+
+.setting { display: flex; align-items: center; gap: 10px; padding: 9px 0; cursor: pointer; }
+.setting input { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+.setting em { color: var(--dim); font-style: normal; font-size: 0.85rem; }
+
+/* accessibility: four-colour deck keeps suits distinguishable without relying on red/black */
+body.cb .card.suit-diamonds, body.cb .learn-card .card.suit-diamonds { color: #1f7ae0; }
+body.cb .card.suit-clubs,    body.cb .learn-card .card.suit-clubs    { color: #1f9d55; }
+body.cb .card.suit-hearts    { color: #d0392f; }
+body.cb .card.suit-spades    { color: #10131a; }
+body.cb .trump-btn.suit-diamonds { color: #1f7ae0; }
+body.cb .trump-btn.suit-clubs    { color: #1f9d55; }
+
+body.big-cards .card { width: 72px; height: 102px; }
+body.big-cards .card .rank { font-size: 1.75rem; }
+body.big-cards .card .suit { font-size: 1.6rem; }
+body.reduce-motion * { animation: none !important; transition: none !important; }
+
 /* ============ lobby ============ */
 .lobby { max-width: 460px; margin: 0 auto; }
 #seat-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }

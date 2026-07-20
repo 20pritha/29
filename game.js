@@ -1,9 +1,27 @@
 // Twenty-Nine game engine. Pure-ish state + methods. UI layer (ui.js) drives it
 // and reads state. 4 players, seats 0..3 clockwise. Teams: {0,2}=A, {1,3}=B.
 
-const MIN_BID = 16;
-const MAX_BID = 28;
-const MATCH_TARGET = 6; // first team to 6 match points wins
+/**
+ * Rule configuration. 29 has many regional variants — these are the knobs that
+ * differ most often between tables. Change them here rather than editing logic.
+ * Anything NOT listed here is documented in RULES.md as "not implemented".
+ */
+const RULES = {
+  minBid: 16,
+  maxBid: 28,
+  matchTarget: 6,        // match points needed to win
+  lastTrickBonus: 1,     // extra point for taking the final trick (28 + 1 = 29)
+  onAllPass: 'forceMinBid', // 'forceMinBid' = left of dealer must bid the minimum
+                            // 'redeal'      = throw the hand in and deal again
+};
+
+const MIN_BID = RULES.minBid;
+const MAX_BID = RULES.maxBid;
+const MATCH_TARGET = RULES.matchTarget; // first team to this many match points wins
+
+// Bump when a rule change would alter how an old game replays. Stored with every
+// saved game/match so old replays can be interpreted with the rules they used.
+const GAME_VERSION = 1;
 
 const Game = {
   players: [],       // [{hand: [card], seat}]
@@ -32,6 +50,15 @@ const Game = {
 
   narration: '', // short "who did what" line for the action log
 
+  // ---- reproducibility + replay ----
+  version: GAME_VERSION,
+  seed: 0,            // seed this match was dealt from
+  rng: Math.random,   // replaced by a seeded PRNG in newGame()
+  actionLog: [],      // append-only list of everything that happened this match
+
+  /** Record one action. Kept minimal: enough to replay, cheap to store. */
+  logAction(entry) { this.actionLog.push(entry); },
+
   listeners: [],
   notify() { this.listeners.forEach((f) => f()); },
   onChange(f) { this.listeners.push(f); },
@@ -40,14 +67,24 @@ const Game = {
   team(seat) { return seat % 2 === 0 ? 0 : 1; },
   next(seat) { return (seat + 1) % 4; },
 
-  newGame() {
+  /**
+   * Start a match. Pass a seed to reproduce an exact match (deal order and any
+   * bot randomness); omit it and one is generated and recorded.
+   * @param {number} [seed]
+   */
+  newGame(seed) {
+    this.version = GAME_VERSION;
+    this.seed = (seed === undefined) ? (Math.random() * 0xFFFFFFFF) >>> 0 : (seed >>> 0);
+    this.rng = makeRng(this.seed);
+    this.actionLog = [];
     this.matchPoints = [0, 0];
-    this.dealer = Math.floor(Math.random() * 4);
+    this.dealer = Math.floor(this.rng() * 4);
+    this.logAction({ a: 'newGame', version: this.version, seed: this.seed, dealer: this.dealer });
     this.startRound();
   },
 
   startRound() {
-    const deck = shuffle(makeDeck());
+    const deck = shuffle(makeDeck(), this.rng);
     this.players = [0, 1, 2, 3].map((seat) => ({ seat, hand: [] }));
     // First 4 cards each, starting left of dealer.
     let idx = 0;
@@ -93,6 +130,7 @@ const Game = {
     this.highBid = amount;
     this.highBidder = seat;
     this.narration = this.pname(seat) + ' bid ' + amount + '.';
+    this.logAction({ a: 'bid', seat, amount });
     this.advanceBidding();
   },
 
@@ -100,6 +138,7 @@ const Game = {
     if (this.phase !== 'bidding' || seat !== this.turn) return;
     this.passed[seat] = true;
     this.narration = this.pname(seat) + ' passed.';
+    this.logAction({ a: 'pass', seat });
     this.advanceBidding();
   },
 
@@ -111,9 +150,15 @@ const Game = {
       return this.finishBidding();
     }
     if (active.length === 0) {
-      // Nobody bid: force left-of-dealer to minimum.
+      // Nobody bid. Variant-dependent: either throw the hand in and redeal, or
+      // force the player left of the dealer to take the minimum bid.
+      if (RULES.onAllPass === 'redeal') {
+        this.narration = 'Everyone passed — redeal.';
+        this.logAction({ a: 'redeal', dealer: this.dealer });
+        return this.startRound();
+      }
       this.highBidder = (this.dealer + 1) % 4;
-      this.highBid = MIN_BID;
+      this.highBid = RULES.minBid;
       return this.finishBidding();
     }
     // move to next active player
@@ -141,6 +186,7 @@ const Game = {
     if (this.phase !== 'chooseTrump') return;
     if (!this.trumpChoices().includes(suit)) return;
     this.trumpSuit = suit;
+    this.logAction({ a: 'trump', seat: this.highBidder, suit });
     // Deal remaining 4 cards each.
     let idx = this._dealIdx;
     for (let round = 0; round < 4; round++) {
@@ -202,6 +248,7 @@ const Game = {
   revealTrump(seat) {
     if (!this.canRevealTrump(seat) || seat !== this.turn) return;
     this.trumpRevealed = true;
+    this.logAction({ a: 'reveal', seat });
     this.narration = this.pname(seat) + ' revealed trump ' + SUIT_SYMBOL[this.trumpSuit] + '.';
     // Revealing player must play a trump this turn if they hold one.
     if (this.hasTrump(seat)) this.mustPlayTrump = true;
@@ -227,6 +274,7 @@ const Game = {
     }
     this.plays.push({ seat, card });
     this.playedLog.push({ seat, card, trick: this.trickCount });
+    this.logAction({ a: 'play', seat, card: card.id });
     this.mustPlayTrump = false;
 
     if (this.plays.length === 4) {
@@ -249,6 +297,7 @@ const Game = {
     this.lastTrickWinner = winner;
     this.narration = this.pname(winner) + ' won trick ' + this.trickCount +
       (pts ? ' (+' + pts + ' pts).' : '.');
+    this.logAction({ a: 'trick', n: this.trickCount, winner, pts });
 
     this.plays = [];
     this.ledSuit = null;
@@ -288,8 +337,8 @@ const Game = {
   },
 
   endRound() {
-    // last-trick bonus point
-    this.roundCardPoints[this.team(this.lastTrickWinner)] += 1;
+    // last-trick bonus (variant: some tables don't award it)
+    this.roundCardPoints[this.team(this.lastTrickWinner)] += RULES.lastTrickBonus;
 
     const bidTeam = this.team(this.highBidder);
     const bidTeamPoints = this.roundCardPoints[bidTeam];
@@ -310,9 +359,15 @@ const Game = {
       trumpSuit: this.trumpSuit,
     };
 
+    this.logAction({
+      a: 'hand', bidder: this.highBidder, bid: this.highBid, made,
+      points: this.roundCardPoints.slice(), winnerTeam, match: this.matchPoints.slice(),
+    });
+
     if (this.matchPoints[0] >= MATCH_TARGET || this.matchPoints[1] >= MATCH_TARGET) {
       this.phase = 'gameOver';
       this.gameWinner = this.matchPoints[0] >= MATCH_TARGET ? 0 : 1;
+      this.logAction({ a: 'gameOver', winner: this.gameWinner, match: this.matchPoints.slice() });
     } else {
       this.phase = 'roundEnd';
     }
@@ -330,8 +385,42 @@ const Game = {
     'passed', 'trumpSuit', 'trumpRevealed', 'trickLeader', 'ledSuit', 'plays',
     'trickCount', 'lastTrickWinner', 'roundCardPoints', 'mustPlayTrump',
     'narration', 'lastResult', 'gameWinner', '_deck', '_dealIdx',
-    'playedLog', 'voids',
+    'playedLog', 'voids', 'version', 'seed', 'actionLog',
   ],
+
+  /**
+   * Re-run a recorded action log and return the outcome. The engine RNG is
+   * consumed only by dealing (bots use their own randomness, and their choices
+   * are already in the log), so a seed + log reproduces a match exactly.
+   * @param {Array<object>} log an actionLog produced by this engine
+   * @returns {{version:number, seed:number, matchPoints:number[], winner:number|null}}
+   */
+  replay(log) {
+    const head = log && log[0];
+    if (!head || head.a !== 'newGame') throw new Error('replay: log must start with newGame');
+    const listeners = this.listeners;
+    this.listeners = []; // replay silently
+    this.newGame(head.seed);
+    for (const e of log) {
+      switch (e.a) {
+        case 'bid': this.placeBid(e.seat, e.amount); break;
+        case 'pass': this.passBid(e.seat); break;
+        case 'trump': this.chooseTrump(e.suit); break;
+        case 'reveal': this.revealTrump(e.seat); break;
+        case 'play':
+          this.playCard(e.seat, e.card);
+          if (this._pendingResolve) this.resolveTrick();
+          if (this.phase === 'roundEnd') this.nextRound();
+          break;
+        default: break; // derived entries (trick/hand/gameOver) are recomputed
+      }
+    }
+    this.listeners = listeners;
+    return {
+      version: this.version, seed: this.seed,
+      matchPoints: this.matchPoints.slice(), winner: this.gameWinner ?? null,
+    };
+  },
 
   snapshot() {
     const o = {};
@@ -341,6 +430,10 @@ const Game = {
 
   loadSnapshot(snap) {
     for (const f of this.SNAP_FIELDS) if (f in snap) this[f] = snap[f];
+    // rng is a function and cannot be serialised; rebuild it from the seed.
+    // (Future deals differ from the original timeline, which is fine on resume.)
+    this.rng = makeRng(this.seed || 0);
+    this.version = snap.version || GAME_VERSION;
     this._pendingResolve = false;
     this.notify();
   },
