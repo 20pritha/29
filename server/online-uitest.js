@@ -6,7 +6,7 @@ const ROOT = path.join(__dirname, '..');
 const errs = [];
 server.listen(0, async () => {
   const port = server.address().port;
-  const html = fs.readFileSync(path.join(ROOT,'online.html'),'utf8').replace(/<link[^>]*>/g,'').replace(/<script[^>]*><\/script>/g,'');
+  const html = fs.readFileSync(path.join(ROOT,'index.html'),'utf8').replace(/<link[^>]*>/g,'').replace(/<script[^>]*><\/script>/g,'');
   const dom = new JSDOM(html, { runScripts:'dangerously', pretendToBeVisual:true, url:'http://localhost:'+port+'/' });
   const w = dom.window; w.WebSocket = WS;
   w.addEventListener('error', e => errs.push('win.error: '+((e.error&&e.error.stack)||e.message)));
