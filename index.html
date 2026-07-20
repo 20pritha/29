@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Twenty-Nine</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Twenty&#8211;Nine</h1>
+    <button id="mute-btn" title="Toggle sound">&#128266;</button>
+    <div id="scoreboard">
+      <div class="team-score" id="score-team-0">
+        <span class="team-name">Team A (P1 &amp; P3)</span>
+        <span class="pts" id="pts-0">0</span>
+      </div>
+      <div class="team-score" id="score-team-1">
+        <span class="team-name">Team B (P2 &amp; P4)</span>
+        <span class="pts" id="pts-1">0</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="status-bar">
+    <span id="round-info"></span>
+    <span id="bid-info"></span>
+    <span id="trump-info"></span>
+  </div>
+  <div id="narration"></div>
+
+  <main>
+    <section id="table">
+      <div id="trick-area"></div>
+      <div id="table-message"></div>
+    </section>
+
+    <section id="player-area">
+      <div id="player-label"></div>
+      <div id="hand"></div>
+      <div id="controls"></div>
+    </section>
+  </main>
+
+  <div id="overlay" class="hidden">
+    <div id="overlay-card">
+      <h2 id="overlay-title"></h2>
+      <div id="overlay-body"></div>
+      <button id="overlay-btn"></button>
+    </div>
+  </div>
+
+  <script src="cards.js"></script>
+  <script src="sound.js"></script>
+  <script src="game.js"></script>
+  <script src="ai.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>

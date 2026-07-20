@@ -1,0 +1,16 @@
+{
+  "name": "twentynine-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "jsdom": "^29.1.1",
+    "ws": "^8.17.0"
+  }
+}
