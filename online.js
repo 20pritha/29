@@ -57,7 +57,9 @@ let pending = [];
 function sendRaw(o) {
   if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return; }
   if (ws && ws.readyState === 0) { pending.push(o); return; }
-  toast('Not connected to server.');
+  // Most common cause: the page was opened from a plain file/static server that
+  // has no WebSocket. Name the mismatch instead of a vague failure.
+  toast('Not connected. Open the game from the server (default http://localhost:8030) — this page is on ' + (location.host || 'file://'));
 }
 function action(a) { Sound.init(); sendRaw(Object.assign({ t: 'action' }, a)); }
 
