@@ -124,7 +124,7 @@
               <div class="tile-ico">🎯</div><h4>MISSIONS</h4>
               <p>0 / 6 completed</p>
             </div>
-            <div class="tile season-tile" data-soon="Season Pass">
+            <div class="tile season-tile">
               <div class="tile-ico">🛡️</div><h4>SEASON</h4>
               <p id="season">—</p>
             </div>
@@ -168,15 +168,6 @@
               <div id="friend-msg" class="msg"></div>
               <div class="card-head mt"><span>TOP PLAYERS</span></div>
               <div id="leaderboard-list" class="leaderboard"></div>
-            </div>
-
-            <!-- Season pass -->
-            <div class="panel-card season-pass">
-              <div class="card-head"><span>SEASON PASS</span></div>
-              <div class="sp-title">Monsoon Season</div>
-              <div class="bar"><div id="sp-bar" class="bar-fill xp"></div></div>
-              <div class="sp-tiers">🎴 🃏 🟩 🟫</div>
-              <button class="gold-btn ghost" data-soon="Season Pass">VIEW PASS</button>
             </div>
           </div>
 
@@ -298,6 +289,13 @@
             <div class="panel-card learn-sec">
               <h3>Account</h3>
               <p id="set-account" class="learn-note"></p>
+              <form id="upgrade-form" class="upgrade hidden">
+                <p class="hint">Pick a username and password to keep your trophies, coins and stats forever.</p>
+                <input id="up-user" placeholder="Username" maxlength="20" autocomplete="username" />
+                <input id="up-pass" type="password" placeholder="Password (min 4)" autocomplete="new-password" />
+                <button class="glow-btn" type="submit">Create my account</button>
+                <div id="up-msg" class="msg"></div>
+              </form>
               <button id="set-signout" class="ghost-btn">Sign out</button>
             </div>
           </div>

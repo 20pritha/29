@@ -690,6 +690,40 @@ async function onMessage(ws, raw) {
     return broadcastLobby(room);
   }
 
+  // Turn the current guest into a permanent account, keeping everything they
+  // earned this session (trophies, coins, XP, match history).
+  if (m.t === 'upgradeGuest') {
+    if (!authThrottle(ws)) return send(ws, { t: 'authErr', msg: 'Too many attempts, wait a minute' });
+    const cur = users[ws.userId];
+    if (!cur) return send(ws, { t: 'authErr', msg: 'Not signed in' });
+    if (!cur.guest) return send(ws, { t: 'authErr', msg: 'You already have an account' });
+    const name = String(m.user || '').trim();
+    const pass = String(m.pass || '');
+    if (name.length < 2 || name.length > 20) return send(ws, { t: 'authErr', msg: 'Name 2-20 chars' });
+    if (/^guest-/i.test(name)) return send(ws, { t: 'authErr', msg: 'That name prefix is reserved' });
+    if (pass.length < 4 || pass.length > 128) return send(ws, { t: 'authErr', msg: 'Password must be 4-128 chars' });
+    if (nameIndex[name.toLowerCase()]) return send(ws, { t: 'authErr', msg: 'Name taken' });
+
+    const passHash = await bcrypt.hash(pass, 10);
+    if (nameIndex[name.toLowerCase()]) return send(ws, { t: 'authErr', msg: 'Name taken' });
+
+    const oldId = ws.userId;
+    const id = crypto.randomUUID();
+    users[id] = { id, name, passHash, stats: cur.stats }; // progress carries over
+    nameIndex[name.toLowerCase()] = id;
+    persistUser(id);
+
+    // move the player's seat (if any) onto the new identity
+    for (const room of rooms.values()) {
+      const seat = seatOfUser(room, oldId);
+      if (seat >= 0) { room.seats[seat].userId = id; room.seats[seat].name = name; }
+    }
+    purgeTokensFor(oldId);
+    delete users[oldId];
+    authUser(ws, id);
+    return sendAuthOk(ws, id, issueToken(id));
+  }
+
   if (m.t === 'home') {
     return send(ws, {
       t: 'home',

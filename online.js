@@ -28,8 +28,10 @@ function show(screen) {
   if (screen === 'settings-screen') {
     const a = $('set-account');
     if (a) a.textContent = me.guest
-      ? 'Playing as a guest (' + me.name + '). Create an account to keep your rank and stats.'
-      : 'Signed in as ' + (me.name || '—') + '.';
+      ? 'Playing as a guest (' + me.name + '). Your progress disappears when you leave.'
+      : 'Signed in as ' + (me.name || '—') + '. Your progress is saved.';
+    const form = $('upgrade-form');
+    if (form) form.classList.toggle('hidden', !me.guest);
   }
 }
 function toast(msg) {
@@ -185,9 +187,6 @@ function renderDashboard() {
   $('pf-highbid').textContent = s.highestBid || '—';
   $('pf-streak').textContent = s.bestStreak || 0;
   $('pf-rating').textContent = (s.rating || 0);
-
-  // season pass progress (placeholder: XP within a 1000 goal)
-  $('sp-bar').style.width = Math.min(100, ((s.xp || 0) % 1000) / 10) + '%';
 
   renderDaily();
   renderSeason();
@@ -345,16 +344,24 @@ function renderHome(m) {
 // ---------- messages ----------
 function onMessage(m) {
   switch (m.t) {
-    case 'authOk':
+    case 'authOk': {
+      const wasGuest = me.guest;
       me.name = m.user; me.stats = m.stats; me.guest = !!m.guest;
       me.token = m.token; // kept in memory so guests survive a reconnect too
       if (m.guest) localStorage.removeItem(TOKEN_KEY); else localStorage.setItem(TOKEN_KEY, m.token);
       $('whoami').textContent = m.user;
       renderDashboard();
       $('auth-msg').textContent = '';
+      if (wasGuest && !m.guest) {           // just upgraded — keep them where they are
+        toast('Account created — progress saved as ' + m.user);
+        $('up-user').value = ''; $('up-pass').value = '';
+        show('settings-screen');
+        break;
+      }
       show('entry-screen');
       { const c = localStorage.getItem(CODE_KEY); if (c) sendRaw({ t: 'rejoin', code: c }); }
       break;
+    }
     case 'home':
       renderHome(m);
       break;
@@ -382,7 +389,9 @@ function onMessage(m) {
     case 'authErr':
       localStorage.removeItem(TOKEN_KEY);
       if (authMode === 'token') show('home-screen');
-      else { $('auth-msg').textContent = m.msg; show('auth-screen'); }
+      else if (me.guest && !$('settings-screen').classList.contains('hidden')) {
+        $('up-msg').textContent = m.msg;           // failed guest upgrade: stay put
+      } else { $('auth-msg').textContent = m.msg; show('auth-screen'); }
       break;
     case 'joined':
       _trumpWasRevealed = false;
@@ -449,6 +458,13 @@ $('join-form').addEventListener('submit', (e) => {
   if (code.length === 4) { $('entry-msg').textContent = ''; sendRaw({ t: 'joinRoom', code }); }
   else $('entry-msg').textContent = 'Enter a 4-letter code';
 });
+$('upgrade-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  $('up-msg').textContent = '';
+  authMode = 'form';
+  sendRaw({ t: 'upgradeGuest', user: $('up-user').value.trim(), pass: $('up-pass').value });
+});
+
 $('add-friend-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('friend-name').value.trim();
