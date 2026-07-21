@@ -46,6 +46,9 @@ db.exec(`
     stats      TEXT NOT NULL
   );
 `);
+// Firebase UID mapping (added in a later version; ignore error if it exists).
+try { db.exec('ALTER TABLE users ADD COLUMN firebase_uid TEXT'); } catch (e) { /* already there */ }
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_fb ON users(firebase_uid) WHERE firebase_uid IS NOT NULL'); } catch (e) {}
 
 // Full game records: seed + action log make any match exactly replayable, and
 // `version` records which rule set produced it.
@@ -86,33 +89,36 @@ function getGame(id) {
 function gameCount() { return db.prepare('SELECT COUNT(*) AS c FROM games').get().c; }
 
 const upsertStmt = db.prepare(`
-  INSERT INTO users (id, name, name_lower, pass_hash, stats)
-  VALUES (?, ?, ?, ?, ?)
+  INSERT INTO users (id, name, name_lower, pass_hash, stats, firebase_uid)
+  VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     name = excluded.name, name_lower = excluded.name_lower,
-    pass_hash = excluded.pass_hash, stats = excluded.stats
+    pass_hash = excluded.pass_hash, stats = excluded.stats,
+    firebase_uid = excluded.firebase_uid
 `);
 
 /**
  * Insert or update one account.
- * @param {{id:string,name:string,passHash:string|null,stats:object}} u
+ * @param {{id:string,name:string,passHash:string|null,stats:object,firebaseUid?:string|null}} u
  */
 function upsertUser(u) {
-  upsertStmt.run(u.id, u.name, u.name.toLowerCase(), u.passHash ?? null, JSON.stringify(u.stats));
+  upsertStmt.run(u.id, u.name, u.name.toLowerCase(), u.passHash ?? null,
+    JSON.stringify(u.stats), u.firebaseUid ?? null);
 }
 
 /**
  * Load every account into the in-memory maps the server uses.
- * @returns {{ users: Record<string,object>, nameIndex: Record<string,string> }}
+ * @returns {{ users, nameIndex, firebaseIndex }}
  */
 function loadAllUsers() {
-  const rows = db.prepare('SELECT id, name, pass_hash, stats FROM users').all();
-  const users = {}, nameIndex = {};
+  const rows = db.prepare('SELECT id, name, pass_hash, stats, firebase_uid FROM users').all();
+  const users = {}, nameIndex = {}, firebaseIndex = {};
   for (const r of rows) {
-    users[r.id] = { id: r.id, name: r.name, passHash: r.pass_hash, stats: JSON.parse(r.stats) };
+    users[r.id] = { id: r.id, name: r.name, passHash: r.pass_hash, stats: JSON.parse(r.stats), firebaseUid: r.firebase_uid };
     nameIndex[r.name.toLowerCase()] = r.id;
+    if (r.firebase_uid) firebaseIndex[r.firebase_uid] = r.id;
   }
-  return { users, nameIndex };
+  return { users, nameIndex, firebaseIndex };
 }
 
 /** @returns {number} number of stored accounts. */

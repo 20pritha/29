@@ -19,7 +19,8 @@
         <div class="fan-card black">J<span>&#9827;</span></div>
         <div class="fan-card red">9<span>&#9829;</span></div>
       </div>
-      <button id="home-guest" class="glow-btn">Play as guest</button>
+      <button id="home-google" class="google-btn"> 🔑 Continue with Google</button>
+      <button id="home-guest" class="ghost-btn">Play as guest</button>
       <button id="home-login" class="ghost-btn">Log in / Sign up</button>
     </div>
   </section>
@@ -35,6 +36,7 @@
         <button id="login-btn" class="glow-btn">Log in</button>
         <button id="register-btn" class="ghost-btn">Create account</button>
       </div>
+      <button id="auth-google" class="google-btn">🔑 Continue with Google</button>
       <div id="auth-msg" class="msg"></div>
       <a id="auth-back" class="hint" href="#">&#8592; Back</a>
     </div>
@@ -431,6 +433,8 @@
   <div id="toast" class="hidden"></div>
 
   <script src="config.js"></script>
+  <script src="firebase-config.js"></script>
+  <script type="module" src="firebase-auth.js"></script>
   <script src="cards.js"></script>
   <script src="sound.js"></script>
   <script src="online.js"></script>

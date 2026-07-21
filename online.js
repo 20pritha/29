@@ -419,6 +419,25 @@ function onMessage(m) {
 }
 
 // ---------- splash / auth ----------
+// ---------- Firebase (Google) sign-in ----------
+function fbSignIn(promise) {
+  if (!(window.Firebase && window.Firebase.available)) { toast('Google sign-in unavailable — use guest or username/password.'); return; }
+  Sound.init(); authMode = 'form';
+  $('auth-msg').textContent = 'Opening Google…';
+  promise
+    .then((token) => { if (token) sendRaw({ t: 'firebaseAuth', token }); })
+    .catch((e) => { $('auth-msg').textContent = (e && e.code === 'auth/popup-closed-by-user') ? '' : 'Google sign-in failed.'; });
+}
+function googleClick() { fbSignIn(window.Firebase.signInGoogle()); }
+$('home-google').onclick = googleClick;
+$('auth-google').onclick = googleClick;
+// Firebase restores a session on reload → sign in automatically if we aren't yet.
+window.onFirebaseUser = (user) => {
+  if (user && ws && ws.readyState === 1 && !me.name) {
+    window.Firebase.currentToken().then((t) => { if (t) sendRaw({ t: 'firebaseAuth', token: t }); });
+  }
+};
+
 $('home-guest').onclick = () => { Sound.init(); authMode = 'guest'; sendRaw({ t: 'guest' }); };
 $('home-login').onclick = () => { $('auth-msg').textContent = ''; show('auth-screen'); };
 $('auth-back').onclick = (e) => { e.preventDefault(); show('home-screen'); };
@@ -785,6 +804,7 @@ function initSettings() {
   bind('set-bigcards', 'bigCards');
   const so = $('set-signout');
   if (so) so.onclick = () => {
+    if (window.Firebase && window.Firebase.available) { try { window.Firebase.signOut(); } catch (e) {} }
     // Guests lose everything on sign-out — make that explicit.
     const warn = me.guest
       ? 'Sign out? You are a guest, so your trophies and stats will be lost. Create an account first to keep them.'

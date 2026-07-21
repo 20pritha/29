@@ -25,6 +25,25 @@ const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
 const store = require('./db'); // SQLite-backed user store
 
+// ---------- Firebase auth (verify ID tokens; no secret needed for this) ----------
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'nine-a92e1';
+let firebaseAuth = null;
+try {
+  const { initializeApp } = require('firebase-admin/app');
+  const { getAuth } = require('firebase-admin/auth');
+  firebaseAuth = getAuth(initializeApp({ projectId: FIREBASE_PROJECT_ID }));
+} catch (e) {
+  console.warn('firebase-admin not available — Firebase sign-in disabled:', e.message);
+}
+/** Verify a Firebase ID token. @returns {Promise<{uid,name,email}|null>} */
+async function verifyFirebaseToken(idToken) {
+  if (!firebaseAuth) return null;
+  try {
+    const d = await firebaseAuth.verifyIdToken(String(idToken || ''));
+    return { uid: d.uid, name: d.name || null, email: d.email || null };
+  } catch (e) { return null; }
+}
+
 const ROOT = path.join(__dirname, '..');
 const PORT = process.env.PORT || 8030;
 const USERS_FILE = path.join(__dirname, 'users.json');
@@ -53,8 +72,9 @@ function makeEngine() {
 }
 
 // ---------- user store ----------
-let users = {};        // userId -> { id, name, passHash }
+let users = {};        // userId -> { id, name, passHash, firebaseUid }
 let nameIndex = {};    // lowercased name -> userId
+let firebaseIndex = {}; // firebase uid -> userId
 function defaultStats() {
   return {
     rating: 0, games: 0, wins: 0, losses: 0, // rating = trophies, everyone starts at Bronze 0
@@ -114,6 +134,7 @@ function loadUsers() {
   const loaded = store.loadAllUsers();
   users = loaded.users;
   nameIndex = loaded.nameIndex;
+  firebaseIndex = loaded.firebaseIndex || {};
   // backfill any missing fields on older accounts
   for (const id in users) users[id].stats = Object.assign(defaultStats(), users[id].stats || {});
 }
@@ -348,6 +369,15 @@ function reassignHost(room) {
   if (cur && !cur.bot && cur.ws && cur.ws.readyState === 1) return; // still fine
   const next = room.seats.findIndex((s) => s && !s.bot && s.ws && s.ws.readyState === 1);
   if (next >= 0) room.hostSeat = next;
+}
+
+/** A display name derived from `base`, made unique (and legal) for our name index. */
+function uniqueName(base) {
+  let root = String(base || 'Player').trim().replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 16) || 'Player';
+  if (/^guest-/i.test(root)) root = 'Player';
+  let name = root, n = 1;
+  while (nameIndex[name.toLowerCase()]) name = (root + (++n)).slice(0, 20);
+  return name;
 }
 
 function authThrottle(ws) {
@@ -622,6 +652,45 @@ async function onMessage(ws, raw) {
     authUser(ws, id);
     return sendAuthOk(ws, id, m.token);
   }
+  // Sign in with a Firebase ID token (email/password or Google, from the client
+  // SDK). We verify it, then find-or-create a game account keyed by Firebase UID.
+  // A current guest is *upgraded in place* so their session progress carries over.
+  if (m.t === 'firebaseAuth') {
+    if (!authThrottle(ws)) return send(ws, { t: 'authErr', msg: 'Too many attempts, wait a minute' });
+    if (!firebaseAuth) return send(ws, { t: 'authErr', msg: 'Google/Firebase sign-in is not enabled on this server' });
+    const info = await verifyFirebaseToken(m.token);
+    if (!info) return send(ws, { t: 'authErr', msg: 'Sign-in failed, please try again' });
+
+    let id = firebaseIndex[info.uid];
+    if (id && users[id]) {                         // returning Firebase user
+      authUser(ws, id);
+      return sendAuthOk(ws, id, issueToken(id));
+    }
+
+    // brand new to us. If they're currently a guest, keep that guest's stats.
+    const cur = users[ws.userId];
+    const keepStats = (cur && cur.guest) ? cur.stats : defaultStats();
+    const oldGuestId = (cur && cur.guest) ? ws.userId : null;
+
+    id = crypto.randomUUID();
+    const name = uniqueName(info.name || (info.email ? info.email.split('@')[0] : 'Player'));
+    users[id] = { id, name, passHash: null, firebaseUid: info.uid, stats: keepStats };
+    nameIndex[name.toLowerCase()] = id;
+    firebaseIndex[info.uid] = id;
+    persistUser(id);
+
+    if (oldGuestId) {
+      for (const room of rooms.values()) {
+        const seat = seatOfUser(room, oldGuestId);
+        if (seat >= 0) { room.seats[seat].userId = id; room.seats[seat].name = name; }
+      }
+      purgeTokensFor(oldGuestId);
+      delete users[oldGuestId];
+    }
+    authUser(ws, id);
+    return sendAuthOk(ws, id, issueToken(id));
+  }
+
   if (m.t === 'guest') { // ephemeral account, in-memory only (not saved to disk)
     if (!authThrottle(ws)) return send(ws, { t: 'authErr', msg: 'Too many attempts, wait a minute' });
     const id = crypto.randomUUID();
