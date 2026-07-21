@@ -10,3 +10,8 @@ server/users.json
 # local noise
 .DS_Store
 *.log
+
+# Firebase service-account key (SECRET — never commit)
+firebase-service-account.json
+server/firebase-service-account.json
+*.serviceaccount.json

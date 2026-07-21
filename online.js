@@ -55,8 +55,12 @@ function closeSidebar() { $('sidebar').classList.remove('open'); }
 function backendUrl() {
   const qs = new URLSearchParams(location.search).get('server');
   if (qs) { try { localStorage.setItem('twentynine-server', qs); } catch (e) {} }
-  let cfg = qs || (typeof window !== 'undefined' && window.TWENTYNINE_SERVER) || '';
+  const isLocal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+  // Priority: ?server= override → remembered → config.js default (skipped on
+  // localhost so local dev always talks to the local server).
+  let cfg = qs;
   if (!cfg) { try { cfg = localStorage.getItem('twentynine-server') || ''; } catch (e) {} }
+  if (!cfg && !isLocal) cfg = (typeof window !== 'undefined' && window.TWENTYNINE_SERVER) || '';
   if (cfg) {
     cfg = cfg.trim().replace(/\/+$/, '');
     if (/^wss?:\/\//.test(cfg)) return cfg;
@@ -450,7 +454,6 @@ document.querySelectorAll('[data-soon]').forEach((el) => el.onclick = (e) => {
 
 // ---------- dashboard actions ----------
 $('daily-btn').onclick = (e) => { e.stopPropagation(); Sound.init(); sendRaw({ t: 'claimDaily' }); };
-$('signout').onclick = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(CODE_KEY); location.reload(); };
 $('create-room-btn').onclick = () => { Sound.init(); sendRaw({ t: 'createRoom' }); };
 $('join-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -781,7 +784,18 @@ function initSettings() {
   bind('set-colorblind', 'colorblind');
   bind('set-bigcards', 'bigCards');
   const so = $('set-signout');
-  if (so) so.onclick = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(CODE_KEY); location.reload(); };
+  if (so) so.onclick = () => {
+    // Guests lose everything on sign-out — make that explicit.
+    const warn = me.guest
+      ? 'Sign out? You are a guest, so your trophies and stats will be lost. Create an account first to keep them.'
+      : 'Sign out of ' + (me.name || 'your account') + '?';
+    const ok = (typeof window.confirm === 'function') ? window.confirm(warn) : true;
+    if (ok) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(CODE_KEY);
+      location.reload();
+    }
+  };
   // the topbar speaker button and the Settings checkbox stay in sync
   const mb = $('mute-btn');
   if (mb) mb.onclick = () => {
